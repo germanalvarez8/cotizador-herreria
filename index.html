@@ -202,8 +202,8 @@ th{font-family:var(--font-d);font-weight:600;letter-spacing:.04em;text-transform
 
     <div class="box">
       <h2>Estimar desde una foto</h2>
-      <div class="muted">Subí la foto del cliente. El modelo propone medidas, perfiles y cantidades y las arma en el plano para que corrijas.</div>
-      <label class="muted">Clave API de Anthropic (queda en este navegador)<input id="apikey" type="password" class="wide" placeholder="sk-ant-..."></label>
+      <div class="muted">Subí la foto del cliente. El modelo propone medidas, perfiles y cantidades y las arma en el plano para que corrijas. <span id="estNote"></span></div>
+      <label class="muted" id="keyRow">Clave API de Anthropic (queda en este navegador)<input id="apikey" type="password" class="wide" placeholder="sk-ant-..."></label>
       <div class="row">
         <input id="photo" type="file" accept="image/*">
         <label>Ancho real cm<input id="hintW" type="number" min="0"></label>
@@ -542,6 +542,18 @@ const SYSTEM=`Sos un herrero con 30 años de taller en Argentina. Te mandan la f
 Perfiles disponibles (usá solo estos ids): ${PROFILES.map(p=>p.id+' = '+p.name).join('; ')}.
 Piezas de catálogo (compradas hechas, usá solo estos ids): ${CATALOG.map(c=>c.id+' = '+c.name).join('; ')}.
 Reglas: si no te dan medidas, estimalas por proporción con referencias de la foto (puerta 200 cm, ladrillo 25 cm, persona 170 cm) y marcá confianza baja. Los barrotes son las barras repetidas; contalos. Los travesaños son horizontales que cruzan todo el ancho (sin contar el marco). Las volutas hechas en taller van en volutas; las que parecen compradas, en catalogo. En notas explicá en dos líneas qué supusiste.`;
+// Dentro del visor de artifacts la página puede preguntarle a Claude con la cuenta de quien la abre (sin clave y sin red propia). Afuera, usa la API con clave.
+let sampler=null;
+(async()=>{try{if(window.claude&&claude.use){sampler=await claude.use('sample');if(sampler){const lim=await sampler.limits().catch(()=>null);if(!lim||!lim.images)sampler=null}}}catch(e){sampler=null}
+ $('keyRow').hidden=!!sampler;$('estNote').textContent=sampler?'Usa tu cuenta de Claude: la primera vez te pide permiso.':''})();
+const JSON_SHAPE=`Respondé solo con un JSON con exactamente esta forma: {"ancho_cm":number,"alto_cm":number,"marco_perfil":"id","barrotes":{"cantidad":int,"perfil":"id","orientacion":"vertical"|"horizontal"},"travesanos":{"cantidad":int,"perfil":"id"},"volutas":{"cantidad":int,"perfil":"id","radio_cm":number},"arcos":{"cantidad":int,"perfil":"id","radio_cm":number},"catalogo":[{"pieza":"id","cantidad":int}],"confianza":"baja"|"media"|"alta","notas":"texto"}. Los ids de perfil y de catálogo deben ser de las listas dadas.`;
+function fixEst(o){const P0=PIDS[0],n=x=>+x||0,pid=x=>PIDS.includes(x)?x:P0;return {ancho_cm:Math.max(10,n(o.ancho_cm)||100),alto_cm:Math.max(10,n(o.alto_cm)||100),marco_perfil:pid(o.marco_perfil),
+ barrotes:{cantidad:Math.max(0,Math.round(n(o.barrotes?.cantidad))),perfil:pid(o.barrotes?.perfil),orientacion:o.barrotes?.orientacion==='horizontal'?'horizontal':'vertical'},
+ travesanos:{cantidad:Math.max(0,Math.round(n(o.travesanos?.cantidad))),perfil:pid(o.travesanos?.perfil)},
+ volutas:{cantidad:Math.max(0,Math.round(n(o.volutas?.cantidad))),perfil:pid(o.volutas?.perfil),radio_cm:n(o.volutas?.radio_cm)||10},
+ arcos:{cantidad:Math.max(0,Math.round(n(o.arcos?.cantidad))),perfil:pid(o.arcos?.perfil),radio_cm:n(o.arcos?.radio_cm)||15},
+ catalogo:(Array.isArray(o.catalogo)?o.catalogo:[]).filter(c=>CIDS.includes(c.pieza)).map(c=>({pieza:c.pieza,cantidad:Math.max(0,Math.round(n(c.cantidad)))})),
+ confianza:['baja','media','alta'].includes(o.confianza)?o.confianza:'baja',notas:String(o.notas||'')}}
 function resize(file){return new Promise((res,rej)=>{const img=new Image();img.onload=()=>{const k=Math.min(1,1200/Math.max(img.width,img.height));const c=document.createElement('canvas');c.width=img.width*k;c.height=img.height*k;c.getContext('2d').drawImage(img,0,0,c.width,c.height);res(c.toDataURL('image/jpeg',.85).split(',')[1])};img.onerror=rej;img.src=URL.createObjectURL(file)})}
 async function build(o){setMode('2d');const W=o.ancho_cm,H=o.alto_cm;M={W,H,D:3,p:o.marco_perfil,edges:{top:false,bot:false,vert:false},parts:[]};renderForm();frameCam();await resetViews();loading=true;
  add('frame',{p:o.marco_perfil,w:W,h:H},{x:0,y:0});
@@ -552,10 +564,14 @@ async function build(o){setMode('2d');const W=o.ancho_cm,H=o.alto_cm;M={W,H,D:3,
  let k=0,nc=o.catalogo.reduce((a,c)=>a+c.cantidad,0);for(const c of o.catalogo)for(let i=0;i<c.cantidad;i++){k++;add('cat',{catId:c.pieza},{x:W*k/(nc+1)-C[c.pieza].s/2,y:-12})}
  loading=false;after();fitView()}
 $('btnEst').addEventListener('click',async()=>{const st=$('estStatus'),key=$('apikey').value.trim(),file=$('photo').files[0];
- if(!key){st.textContent='Falta la clave API.';return}if(!file){st.textContent='Elegí una foto primero.';return}
- st.textContent='Analizando la foto...';$('btnEst').disabled=true;
- try{const data=await resize(file);const hw=+$('hintW').value,hh=+$('hintH').value;
+ if(!file){st.textContent='Elegí una foto primero.';return}if(!sampler&&!key){st.textContent='Falta la clave API.';return}
+ st.textContent='Analizando la foto (puede tardar un minuto)...';$('btnEst').disabled=true;
+ try{const hw=+$('hintW').value,hh=+$('hintH').value;
   const text='Estimá materiales y cantidades de esta pieza.'+(hw||hh?` Medidas reales conocidas: ${hw?'ancho '+hw+' cm':''} ${hh?'alto '+hh+' cm':''}.`:' No tengo medidas, estimalas.');
+  if(sampler){let o;try{o=await sampler.json(SYSTEM+'\n\n'+text+'\n\n'+JSON_SHAPE,{images:[file],modelTier:'default',cache:false})}
+   catch(e){const m={not_granted:'No diste permiso para usar Claude desde esta página.',rate_limited:'Demasiadas consultas o límite de uso alcanzado. Probá más tarde.',image_rejected:'La foto no se pudo usar. Probá con un JPG o PNG más chico.',refused:'El modelo no quiso analizar esta imagen.',invalid_json:'La respuesta no vino bien formada. Probá de nuevo.'};throw new Error(m[e.code]||e.message||e.code)}
+   o=fixEst(o);await build(o);st.innerHTML=`<b>Confianza ${o.confianza}.</b> ${o.notas} <span class="muted">Tocá cada parte para corregir medidas y perfiles.</span>`;$('btnEst').disabled=false;return}
+  const data=await resize(file);
   const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2026-10-21','anthropic-dangerous-direct-browser-access':'true','anthropic-beta':'server-side-fallback-2026-07-01'},
    body:JSON.stringify({model:'claude-opus-5-5',max_tokens:4000,fallbacks:'default',system:SYSTEM,output_config:{format:{type:'json_schema',schema:SCHEMA}},
     messages:[{role:'user',content:[{type:'image',source:{type:'base64',media_type:'image/jpeg',data}},{type:'text',text}]}]})});
