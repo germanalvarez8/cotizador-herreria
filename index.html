@@ -1,0 +1,756 @@
+<title>Cotizador de Herrería</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+/* Layout: taller. Partes a la izquierda (clic para agregar), plano al centro (arrastrar, estirar, rotar), materiales a la derecha. */
+:root{
+  --bg:#e9ecef; --panel:#ffffff; --fg:#1b2129; --muted:#5b6672; --line:#c9d1d9;
+  --accent:#2b5d8c; --accent-fg:#ffffff; --warn:#a4660f;
+  --steel:#2f3a45; --grid:#d5dbe1; --sel:rgba(43,93,140,.18); --zone:rgba(43,93,140,.07);
+  --font-d:'Barlow Condensed','Arial Narrow',sans-serif; --font:'Barlow','Helvetica Neue',Arial,sans-serif;
+}
+@media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+  --bg:#14181d; --panel:#1d2329; --fg:#e4e8ec; --muted:#98a3ae; --line:#323b45;
+  --accent:#78acdf; --accent-fg:#0f1419; --warn:#d8a24a;
+  --steel:#c3ccd5; --grid:#283039; --sel:rgba(120,172,223,.22); --zone:rgba(120,172,223,.08); color-scheme:dark } }
+:root[data-theme="dark"]{
+  --bg:#14181d; --panel:#1d2329; --fg:#e4e8ec; --muted:#98a3ae; --line:#323b45;
+  --accent:#78acdf; --accent-fg:#0f1419; --warn:#d8a24a;
+  --steel:#c3ccd5; --grid:#283039; --sel:rgba(120,172,223,.22); --zone:rgba(120,172,223,.08); color-scheme:dark }
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--bg);color:var(--fg);font:14px/1.4 var(--font);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0}
+h1,h2{font-family:var(--font-d);margin:0;text-wrap:balance}
+h1{font-size:22px;font-weight:700;letter-spacing:.02em;text-transform:uppercase}
+h2{font-size:14px;font-weight:600;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+header{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding-block:10px;border-bottom:1px solid var(--line)}
+header .sp{flex:1}
+button,select,input{font:inherit;color:var(--fg);background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:6px 9px}
+button{cursor:pointer}
+button:hover{border-color:var(--accent)}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
+button.primary{background:var(--accent);color:var(--accent-fg);border-color:var(--accent);font-weight:600}
+button.on{background:var(--accent);color:var(--accent-fg);border-color:var(--accent)}
+main{display:grid;grid-template-columns:180px minmax(0,1fr) 370px;gap:12px;padding-block:12px;height:calc(100% - 58px)}
+.parts{display:flex;flex-direction:column;gap:6px;overflow:auto;min-width:0}
+.parts button{text-align:left}
+.parts h2{margin-top:8px}
+.parts label{font-size:12px;color:var(--muted);display:flex;flex-direction:column;gap:2px}
+.stage{display:flex;flex-direction:column;gap:6px;min-width:0;min-height:0}
+.steps{display:flex;gap:14px;flex-wrap:wrap;font-size:13px;color:var(--muted)}
+.steps b{color:var(--fg);font-family:var(--font-d);font-size:15px}
+.wrap{position:relative;flex:1;min-height:360px;border:1px solid var(--line);border-radius:4px;overflow:hidden;background-color:var(--panel);
+  background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px)}
+.wrap canvas{touch-action:none}
+#dim{position:absolute;pointer-events:none;background:var(--accent);color:var(--accent-fg);font:600 12px var(--font-d);padding:2px 6px;border-radius:3px;white-space:nowrap;display:none}
+.viewbar,.tabs{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.tabs input{width:64px}
+.stagerow{display:flex;gap:8px;flex:1;min-height:0}
+.stagerow .wrap{flex:1}
+.mini3{width:36%;min-width:220px;position:relative;border:1px solid var(--line);border-radius:4px;overflow:hidden;background:var(--panel)}
+.mini3 canvas{display:block;width:100%;height:100%;touch-action:none}
+.parts .box3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px}
+.parts .box3 input{width:100%;padding:4px}
+.parts .chk{flex-direction:row;align-items:center;gap:6px}
+.viewbar .sp{flex:1}
+.panel{display:flex;flex-direction:column;gap:12px;min-width:0;overflow:auto}
+.box{background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:10px;display:flex;flex-direction:column;gap:8px;min-width:0}
+.row{display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap}
+.row label{display:flex;flex-direction:column;gap:2px;font-size:12px;color:var(--muted)}
+.row input{width:86px}
+.row input.wide{width:100%}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums;font-size:13px}
+th,td{text-align:right;padding:4px 6px;border-bottom:1px solid var(--line);vertical-align:top}
+th:first-child,td:first-child{text-align:left}
+th{font-family:var(--font-d);font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);font-size:12px}
+.tot{font-family:var(--font-d);font-size:24px;font-weight:700}
+.muted{color:var(--muted);font-size:12px}
+.warn{color:var(--warn)}
+.tbl{overflow-x:auto}
+.cuts{font-size:11px;color:var(--muted)}
+.status{font-size:13px;min-height:1.4em}
+/* modo 3D */
+.modes{display:flex;gap:0}
+.modes button{border-radius:0}
+.modes button:first-child{border-radius:4px 0 0 4px}
+.modes button:last-child{border-radius:0 4px 4px 0}
+.wrap3{position:relative;flex:1;min-height:420px;border:1px solid var(--line);border-radius:4px;overflow:hidden;background:var(--panel)}
+.wrap3 canvas{display:block;width:100%;height:100%;touch-action:none}
+.v3label{position:absolute;left:68%;width:32%;padding:4px 8px;font:600 12px var(--font-d);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);pointer-events:none;border-left:1px solid var(--line);border-top:1px solid var(--line);box-sizing:border-box;height:33.34%}
+.v3dim{position:absolute;left:8px;top:6px;font:700 14px var(--font-d);color:var(--fg);pointer-events:none}
+.v3hint{position:absolute;left:8px;bottom:6px;font-size:12px;color:var(--muted);pointer-events:none}
+.part{display:flex;flex-wrap:wrap;gap:4px;align-items:center;padding:6px;border:1px solid var(--line);border-radius:4px;background:var(--panel)}
+.part.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
+.part select,.part input{padding:3px 5px;font-size:12px}
+.part input{width:58px}
+.part .x{margin-left:auto}
+.part .lab{font-size:11px;color:var(--muted);width:100%}
+@media (max-width:1000px){
+  main{grid-template-columns:1fr;height:auto}
+  .parts{flex-direction:row;flex-wrap:wrap;align-items:center}
+  .parts h2{margin:0 4px}
+  .wrap,.wrap3{height:62vh}
+  .stagerow{flex-direction:column}
+  .mini3{width:100%;height:40vh}
+}
+</style>
+
+<header>
+  <h1>Cotizador de Herrería</h1>
+  <span class="modes"><button id="mode2d">Dibujar caras · 2D</button><button id="mode3d">Caja y partes · 3D</button></span>
+  <span class="sp"></span>
+  <button id="btnShot">Imagen para el cliente</button>
+</header>
+<div id="shot" hidden style="position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:16px">
+  <div class="box" style="max-width:min(900px,96vw);max-height:92vh;overflow:auto"><h2>Imagen para el cliente</h2><img id="shotImg" alt="Vista de la pieza" style="max-width:100%;border:1px solid var(--line)"><div class="muted">En el celular, mantené apretada la imagen para guardarla o compartirla por WhatsApp.</div><div class="row"><button id="shotCopy" class="primary">Copiar imagen</button><button id="shotClose">Cerrar</button></div></div>
+</div>
+
+<main>
+  <aside class="parts" id="parts2d">
+    <h2>Empezar</h2>
+    <button id="btnSample">Reja de ejemplo</button>
+    <button id="btnClear">Vaciar esta cara</button>
+    <h2>Perfil para lo nuevo</h2>
+    <label><select id="curProfile"></select></label>
+    <h2>Estructura</h2>
+    <button data-add="frame">Marco</button>
+    <button data-add="bars">Barrotes</button>
+    <button data-add="seg">Tramo recto</button>
+    <h2>Curvas de taller</h2>
+    <button data-add="arc">Arco</button>
+    <button data-add="vol">Voluta</button>
+    <h2>Chapa</h2>
+    <button data-add="sheet">Pieza de chapa</button>
+    <h2>Piezas de catálogo</h2>
+    <div id="catButtons" style="display:contents"></div>
+  </aside>
+
+  <section class="stage" id="stage2d">
+    <div class="steps"><span><b>1</b> Elegí la cara de la caja que vas a dibujar</span><span><b>2</b> Agregá partes con un clic, arrastralas y estiralas desde los puntos</span><span><b>3</b> Lo que dibujás aparece montado en el 3D de al lado al instante</span></div>
+    <div class="tabs" id="tabs"></div>
+    <div class="stagerow"><div class="wrap" id="wrap"><canvas id="c"></canvas><div id="dim"></div></div><div class="mini3" id="mini3"><div class="v3dim" id="minidim"></div></div></div>
+    <div class="viewbar">
+      <button id="btnUndo">Deshacer (Ctrl+Z)</button>
+      <button id="btnDup">Duplicar (Ctrl+D)</button>
+      <button id="btnDel">Borrar (Supr)</button>
+      <button id="btnRef">Ya contado / contar (R)</button>
+      <span class="sp"></span>
+      <label class="muted">Grilla <select id="snap"><option>1</option><option selected>5</option><option>10</option></select> cm</label>
+      <button id="btnPan">Mover vista</button>
+      <button id="zIn">+</button><button id="zOut">−</button><button id="btnFit">Ajustar</button>
+    </div>
+  </section>
+
+  <aside class="parts" id="parts3d" hidden>
+    <h2>Empezar de una plantilla</h2>
+    <button data-preset="parrilla">Parrilla</button>
+    <button data-preset="mesa">Mesa</button>
+    <button data-preset="estante">Estantería</button>
+    <h2>Caja base</h2>
+    <div class="box3"><input id="mW" type="number" title="Ancho cm"><input id="mH" type="number" title="Alto cm"><input id="mD" type="number" title="Profundidad cm"></div>
+    <span class="muted">ancho · alto · profundidad (cm)</span>
+    <label>Perfil de la caja<select id="mP"></select></label>
+    <label class="chk"><input type="checkbox" id="eTop"> aristas de arriba</label>
+    <label class="chk"><input type="checkbox" id="eBot"> aristas de abajo</label>
+    <label class="chk"><input type="checkbox" id="eVert"> patas / verticales</label>
+    <h2>Partes interiores</h2>
+    <button data-padd="bars">Grilla / barrotes</button>
+    <button data-padd="bar">Travesaño</button>
+    <button data-padd="frame">Marco / estante</button>
+    <button data-padd="sheet">Chapa</button>
+    <div id="facelist" style="display:flex;flex-direction:column;gap:4px"></div>
+    <h2>Partes</h2>
+    <div id="plist" style="display:flex;flex-direction:column;gap:6px"></div>
+  </aside>
+
+  <section class="stage" id="stage3d" hidden>
+    <div class="steps"><span><b>1</b> Definí la caja o partí de una plantilla</span><span><b>2</b> Agregá partes interiores: grillas, travesaños, estantes, chapa</span><span><b>3</b> Las caras exteriores se dibujan en el modo 2D y aparecen acá. Nada se cuenta dos veces</span></div>
+    <div class="wrap3" id="wrap3"><canvas id="c3"></canvas>
+      <div class="v3dim" id="v3dim"></div><div class="v3hint">Arrastrá el fondo para girar · rueda para acercar · arrastrá una parte para moverla</div>
+      <div class="v3label" style="top:0">Frente</div><div class="v3label" style="top:33.33%">Lateral</div><div class="v3label" style="top:66.66%">Planta</div>
+    </div>
+    <div class="viewbar">
+      <button id="undo3">Deshacer (Ctrl+Z)</button>
+      <button id="del3">Quitar parte (Supr)</button>
+      <span class="muted">Arrastrá una parte en el 3D para moverla · flechas del teclado la mueven de a <span id="snap3">1</span> cm</span>
+    </div>
+  </section>
+
+  <aside class="panel">
+    <div class="box" id="props"></div>
+
+    <div class="box">
+      <h2>Materiales</h2>
+      <div class="tbl"><table id="bom"></table></div>
+      <div id="origen"></div>
+      <div class="row">
+        <label>Mano de obra (% sobre material)<input id="labor" type="number" min="0" step="5"></label>
+        <label>Pintura y consumibles ($)<input id="extras" type="number" min="0" step="100"></label>
+      </div>
+      <div class="row" style="justify-content:space-between">
+        <div><div class="muted">Peso</div><div class="tot" id="kg"></div></div>
+        <div><div class="muted">Material</div><div class="tot" id="mat"></div></div>
+        <div><div class="muted">Precio sugerido</div><div class="tot" id="total"></div></div>
+      </div>
+      <div class="muted">Barras de 6 m, corte 3 mm. Los precios son <b>ejemplo</b>, editalos abajo.</div>
+      <button id="btnCopy">Copiar presupuesto para WhatsApp</button>
+    </div>
+
+    <div class="box">
+      <h2>Estimar desde una foto</h2>
+      <div class="muted">Subí la foto del cliente. El modelo propone medidas, perfiles y cantidades y las arma en el plano para que corrijas.</div>
+      <label class="muted">Clave API de Anthropic (queda en este navegador)<input id="apikey" type="password" class="wide" placeholder="sk-ant-..."></label>
+      <div class="row">
+        <input id="photo" type="file" accept="image/*">
+        <label>Ancho real cm<input id="hintW" type="number" min="0"></label>
+        <label>Alto real cm<input id="hintH" type="number" min="0"></label>
+      </div>
+      <button class="primary" id="btnEst">Estimar y armar en el plano</button>
+      <div class="status" id="estStatus"></div>
+    </div>
+
+    <div class="box">
+      <h2>Precios de perfiles (por barra de 6 m)</h2>
+      <div class="tbl"><table id="prices"></table></div>
+      <h2>Precios de chapa (por hoja de 1 x 2 m)</h2>
+      <div class="tbl"><table id="sheetprices"></table></div>
+      <h2>Precios de catálogo (por pieza)</h2>
+      <div class="tbl"><table id="catprices"></table></div>
+    </div>
+  </aside>
+</main>
+
+<script>
+// ===== calc-begin =====
+// kgm = kg por metro (acero 7.85 g/cm3). w = ancho visual en cm.
+const PROFILES=[
+ {id:'pl12',name:'Planchuela 1/2" x 1/8"',w:1.27,kgm:0.316,price:6500},
+ {id:'pl19',name:'Planchuela 3/4" x 3/16"',w:1.9,kgm:0.712,price:12000},
+ {id:'pl25',name:'Planchuela 1" x 3/16"',w:2.54,kgm:0.949,price:15500},
+ {id:'pl32',name:'Planchuela 1 1/4" x 3/16"',w:3.2,kgm:1.187,price:19000},
+ {id:'cu10',name:'Cuadrado macizo 10 mm',w:1,kgm:0.785,price:13000},
+ {id:'cu12',name:'Cuadrado macizo 12 mm',w:1.2,kgm:1.13,price:18500},
+ {id:'cu16',name:'Cuadrado macizo 16 mm',w:1.6,kgm:2.01,price:32000},
+ {id:'re10',name:'Redondo liso 10 mm',w:1,kgm:0.617,price:10500},
+ {id:'re12',name:'Redondo liso 12 mm',w:1.2,kgm:0.888,price:14500},
+ {id:'tu20',name:'Tubo 20x20x1.2',w:2,kgm:0.708,price:14000},
+ {id:'tu30',name:'Tubo 30x30x1.2',w:3,kgm:1.085,price:20000},
+ {id:'tu4020',name:'Tubo 40x20x1.2',w:3,kgm:1.085,price:20500},
+ {id:'tu40',name:'Tubo 40x40x1.6',w:4,kgm:1.93,price:34000},
+ {id:'an25',name:'Ángulo 1" x 1/8"',w:2.54,kgm:1.185,price:17000},
+];
+const CATALOG=[
+ {id:'vol_chica',name:'Voluta chica (12 cm)',price:900,shape:'spiral',s:12},
+ {id:'vol_grande',name:'Voluta grande (20 cm)',price:1600,shape:'spiral',s:20},
+ {id:'lanza',name:'Punta de lanza',price:1200,shape:'spear',s:12},
+ {id:'roseton',name:'Rosetón',price:1400,shape:'ring',s:8},
+ {id:'bocha',name:'Bocha / esfera',price:800,shape:'ball',s:5},
+ {id:'hoja',name:'Hoja decorativa',price:1000,shape:'leaf',s:10},
+];
+const SHEETS=[
+ {id:'ch16',name:'Chapa 1,6 mm',e:1.6,price:38000},
+ {id:'ch2',name:'Chapa 2 mm',e:2,price:47000},
+ {id:'ch3',name:'Chapa 3 mm',e:3,price:70000},
+ {id:'ch475',name:'Chapa 4,75 mm',e:4.75,price:110000},
+];
+const SHEET_M2=2, SHEET_WASTE=1.15; // hoja de 1x2 m; ponytail: sin nesting 2D, 15% de desperdicio fijo
+const BAR=600, KERF=0.3, PX=3; // PX = píxeles por cm en el plano
+const SH=Object.fromEntries(SHEETS.map(x=>[x.id,x]));
+const P=Object.fromEntries(PROFILES.map(p=>[p.id,p]));
+const C=Object.fromEntries(CATALOG.map(c=>[c.id,c]));
+function polyLen(pts){let s=0;for(let i=1;i<pts.length;i++)s+=Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]);return s}
+// Espiral de Arquímedes en cm, de r1 (afuera) a r0 (adentro).
+function volPts(r0,r1,turns){const n=Math.ceil(48*turns),o=[];for(let i=0;i<=n;i++){const t=i/n,r=r1+(r0-r1)*t,a=2*Math.PI*turns*t;o.push([r*Math.cos(a),-r*Math.sin(a)])}return o}
+// Barrotes repartidos parejo; los extremos son marco.
+function barN(span,sp){return Math.max(1,Math.round(span/sp)-1)}
+// Largos (cm) por perfil que aporta cada objeto. Lee medidas base × escala, así sirve para objetos Fabric y para objetos planos.
+// ref = "ya contado en otra vista": se dibuja pero no suma. qty = piezas iguales superpuestas en esta vista.
+function pieces(o){if(o.ref)return [];const sx=o.scaleX||1,sy=o.scaleY||1,q=Math.max(1,o.qty||1);let r=[];
+ if(o.kind==='seg')r=[[o.p,o.width*sx/PX]];
+ if(o.kind==='frame'){const w=o.width*sx/PX,h=o.height*sy/PX;r=[[o.p,w],[o.p,w],[o.p,h],[o.p,h]]}
+ if(o.kind==='bars'){const w=o.bw*sx/PX,h=o.bh*sy/PX,v=o.dir==='v';r=Array(barN(v?w:h,o.sp)).fill([o.p,v?h:w])}
+ if(o.kind==='arc')r=[[o.p,o.r*sx*o.sweep*Math.PI/180]];
+ if(o.kind==='vol')r=[[o.p,polyLen(volPts(o.r0,o.r1,o.turns))*sx]];
+ const out=[];for(let i=0;i<q;i++)out.push(...r);return out;
+}
+function sheetM2(o){if(o.kind!=='sheet'||o.ref)return 0;return o.width*(o.scaleX||1)*o.height*(o.scaleY||1)/PX/PX/1e4*Math.max(1,o.qty||1)}
+// First-fit decreasing en barras de 6 m. ponytail: alcanza para un taller; si el desperdicio molesta, probar búsqueda local.
+function pack(lengths,L=BAR,kerf=KERF){const ls=[...lengths].sort((a,b)=>b-a),bars=[];
+ for(const l of ls){let b=bars.find(b=>b.rem>=l);if(!b){b={rem:L,cuts:[]};bars.push(b)}b.cuts.push(l);b.rem-=l+kerf}return bars}
+function calc(objs,S){
+ const by={};
+ for(const o of objs)for(const [p,l] of pieces(o))(by[p]=by[p]||[]).push(l);
+ const rows=Object.entries(by).map(([p,ls])=>{const bars=pack(ls),m=ls.reduce((a,b)=>a+b,0)/100,kg=m*P[p].kgm,cost=bars.length*(S.prices[p]??P[p].price);
+  return {p,name:P[p].name,n:ls.length,m,bars:bars.length,waste:1-m*100/(bars.length*BAR),kg,cost,cuts:bars,over:ls.some(l=>l>BAR)}});
+ const cat={};for(const o of objs)if(o.kind==='cat'&&!o.ref)cat[o.catId]=(cat[o.catId]||0)+Math.max(1,o.qty||1);
+ const catRows=Object.entries(cat).map(([id,n])=>({id,name:C[id].name,n,cost:n*(S.catPrices[id]??C[id].price)}));
+ const sh={};for(const o of objs){const a=sheetM2(o);if(a)sh[o.p]=(sh[o.p]||0)+a}
+ const sheetRows=Object.entries(sh).map(([id,m2])=>{const x=SH[id],hojas=Math.ceil(m2*SHEET_WASTE/SHEET_M2);return {id,name:x.name,m2,kg:m2*x.e/1000*7850,hojas,cost:hojas*((S.sheetPrices||{})[id]??x.price)}});
+ const kg=rows.reduce((a,r)=>a+r.kg,0)+sheetRows.reduce((a,r)=>a+r.kg,0),mat=rows.reduce((a,r)=>a+r.cost,0)+catRows.reduce((a,r)=>a+r.cost,0)+sheetRows.reduce((a,r)=>a+r.cost,0);
+ return {rows,catRows,sheetRows,kg,mat,total:mat*(1+S.labor/100)+S.extras};
+}
+// ===== calc-end =====
+
+const $=id=>document.getElementById(id);
+const fmt=n=>'$ '+Math.round(n).toLocaleString('es-AR');
+const num=(n,d=1)=>n.toLocaleString('es-AR',{maximumFractionDigits:d});
+const css=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+let S={snap:5,labor:100,extras:15000,prices:{},catPrices:{},sheetPrices:{},mode:'2d'};
+try{Object.assign(S,JSON.parse(localStorage.getItem('herreria.cfg'))||{})}catch(e){}
+const PROPS=['kind','p','sp','dir','sweep','turns','r','r0','r1','bw','bh','catId','qty','ref','lockScalingX','lockScalingY','perPixelTargetFind'];
+
+// ---- plano ----
+const canvas=new fabric.Canvas('c',{preserveObjectStacking:true,uniformScaling:false,selectionColor:css('--sel'),selectionBorderColor:css('--accent')});
+function theme(){const a=css('--accent');fabric.Object.prototype.set({transparentCorners:false,cornerSize:11,cornerStyle:'circle',cornerColor:a,cornerStrokeColor:'#fff',borderColor:a,padding:3});
+ canvas.selectionColor=css('--sel');canvas.selectionBorderColor=a;
+ const st=css('--steel');canvas.getObjects().forEach(o=>paint(o,st));canvas.requestRenderAll()}
+function paint(o,st){if(o.kind==='seg')o.set('fill',st);else if(o.kind==='frame'||o.kind==='arc'||o.kind==='vol'||o.kind==='sheet')o.set('stroke',st);
+ else if(o.kind==='bars'||o.kind==='cat')o.getObjects().forEach(c=>{if(c.stroke&&c.stroke!=='transparent')c.set('stroke',st);if(c.fill&&c.fill!=='transparent'&&!String(c.fill).startsWith('rgba'))c.set('fill',st)})}
+function fit(){const w=$('wrap');canvas.setDimensions({width:w.clientWidth,height:w.clientHeight})}
+window.addEventListener('resize',()=>{fit();grid()});
+function grid(){const v=canvas.viewportTransform,s=S.snap*PX*v[0];$('wrap').style.backgroundSize=`${s}px ${s}px`;$('wrap').style.backgroundPosition=`${v[4]}px ${v[5]}px`}
+function snapPx(){return S.snap*PX}
+
+// ---- fábrica de partes (medidas en cm) ----
+function mk(kind,opt={}){const st=css('--steel'),p=opt.p||$('curProfile').value,w=Math.max(P[p].w*PX,2),[FW,FH]=FACES[cur].dims();let o;
+ if(kind==='seg')o=new fabric.Rect({kind,p,width:(opt.len||FW)*PX,height:w,fill:st,strokeWidth:0,lockScalingY:true});
+ if(kind==='frame')o=new fabric.Rect({kind,p,width:(opt.w||FW)*PX,height:(opt.h||FH)*PX,fill:'transparent',stroke:st,strokeWidth:w,strokeUniform:true,perPixelTargetFind:true});
+ if(kind==='bars')o=mkBars({p,bw:(opt.w||FW)*PX,bh:(opt.h||FH)*PX,sp:opt.sp||12,dir:opt.dir||'v'});
+ if(kind==='arc')o=mkArc({p,r:opt.r||15,sweep:opt.sweep||180});
+ if(kind==='vol')o=mkVol({p,r0:1.5,r1:opt.r1||10,turns:opt.turns||1.5});
+ if(kind==='cat')o=mkCat(opt.catId);
+ if(kind==='sheet')o=new fabric.Rect({kind,p:opt.p||'ch2',width:(opt.w||FW)*PX,height:(opt.h||FH)*PX,fill:css('--zone'),stroke:st,strokeWidth:1.5,strokeUniform:true,strokeDashArray:[6,4]});
+ decorate(o);return o}
+function mkBars(a){const st=css('--steel'),w=Math.max(P[a.p].w*PX,2),v=a.dir==='v',span=v?a.bw:a.bh,n=barN(span/PX,a.sp),pitch=span/(n+1);
+ const kids=[new fabric.Rect({left:0,top:0,width:a.bw,height:a.bh,fill:css('--zone'),strokeWidth:0})];
+ for(let i=1;i<=n;i++)kids.push(v?new fabric.Rect({left:pitch*i-w/2,top:0,width:w,height:a.bh,fill:st,strokeWidth:0}):new fabric.Rect({left:0,top:pitch*i-w/2,width:a.bw,height:w,fill:st,strokeWidth:0}));
+ return new fabric.Group(kids,{kind:'bars',p:a.p,bw:a.bw,bh:a.bh,sp:a.sp,dir:a.dir})}
+function mkArc(a){const st=css('--steel'),w=Math.max(P[a.p].w*PX,2),r=a.r*PX,t=a.sweep*Math.PI/180,x2=r*Math.cos(Math.PI-t),y2=-r*Math.sin(Math.PI-t);
+ return new fabric.Path(`M ${-r} 0 A ${r} ${r} 0 ${a.sweep>180?1:0} 1 ${x2} ${y2}`,{kind:'arc',p:a.p,r:a.r,sweep:a.sweep,fill:'',stroke:st,strokeWidth:w,strokeUniform:true,strokeLineCap:'round'})}
+function mkVol(a){const st=css('--steel'),w=Math.max(P[a.p].w*PX,2);
+ return new fabric.Polyline(volPts(a.r0,a.r1,a.turns).map(q=>({x:q[0]*PX,y:q[1]*PX})),{kind:'vol',p:a.p,r0:a.r0,r1:a.r1,turns:a.turns,fill:'',stroke:st,strokeWidth:w,strokeUniform:true,strokeLineJoin:'round',strokeLineCap:'round'})}
+function mkCat(id){const c=C[id],st=css('--steel'),s=c.s*PX,k=[];
+ if(c.shape==='spiral')k.push(new fabric.Polyline(volPts(0.8,c.s/2,1.5).map(q=>({x:q[0]*PX,y:q[1]*PX})),{fill:'',stroke:st,strokeWidth:3,strokeLineJoin:'round'}));
+ else if(c.shape==='spear')k.push(new fabric.Polygon([{x:0,y:-s/2},{x:s/4,y:s/4},{x:0,y:s/2},{x:-s/4,y:s/4}],{fill:st}));
+ else if(c.shape==='ring')k.push(new fabric.Circle({radius:s/2,fill:'',stroke:st,strokeWidth:4,originX:'center',originY:'center'}),new fabric.Circle({radius:s/5,fill:st,originX:'center',originY:'center'}));
+ else if(c.shape==='ball')k.push(new fabric.Circle({radius:s/2,fill:st}));
+ else k.push(new fabric.Path(`M 0 ${s/2} Q ${-s/2} 0 0 ${-s/2} Q ${s/2} 0 0 ${s/2} Z`,{fill:st}));
+ return new fabric.Group(k,{kind:'cat',catId:id,lockScalingX:true,lockScalingY:true})}
+function decorate(o){const k=o.kind;o.set('opacity',o.ref?.35:1);
+ if(k==='seg')o.setControlsVisibility({mt:false,mb:false,tl:false,tr:false,bl:false,br:false});
+ if(k==='arc'||k==='vol')o.setControlsVisibility({mt:false,mb:false,ml:false,mr:false});
+ if(k==='cat')o.setControlsVisibility({mt:false,mb:false,ml:false,mr:false,tl:false,tr:false,bl:false,br:false});
+ return o}
+function add(kind,opt={},pos){const o=mk(kind,opt);const g=snapPx();
+ if(pos){o.set({left:pos.x*PX,top:pos.y*PX})}else if(kind==='frame'||kind==='bars'||kind==='sheet'){o.set({left:0,top:0})}else{const c=canvas.getVpCenter();o.set({left:Math.round((c.x-o.width/2)/g)*g,top:Math.round((c.y-o.height/2)/g)*g})}
+ if(opt.angle)o.set('angle',opt.angle);if(opt.qty)o.qty=opt.qty;if(opt.ref){o.ref=true;o.set('opacity',.35)}
+ o.setCoords();canvas.add(o);if(!pos){canvas.setActiveObject(o)}return o}
+// Reemplaza un objeto por una versión regenerada manteniendo posición y giro.
+function rebuild(o,fn){const {left,top,angle}=o,i=canvas.getObjects().indexOf(o);const n=decorate(fn());n.set({left,top,angle});canvas.remove(o);canvas.insertAt(n,i);canvas.setActiveObject(n);return n}
+
+// ---- interacción ----
+canvas.on('object:moving',e=>{const o=e.target,g=snapPx();o.set({left:Math.round(o.left/g)*g,top:Math.round(o.top/g)*g});showDim(o)});
+canvas.on('object:scaling',e=>{const o=e.target,g=S.snap;
+ if(o.kind==='arc'||o.kind==='vol'||o.kind==='cat'){o.scaleY=o.scaleX}
+ else if(o.kind==='seg'){const l=Math.max(g,Math.round(o.width*o.scaleX/PX/g)*g);o.scaleX=l*PX/o.width}
+ else if(o.kind==='frame'||o.kind==='bars'||o.kind==='sheet'){const bw=o.kind==='bars'?o.bw:o.width,bh=o.kind==='bars'?o.bh:o.height;
+  o.scaleX=Math.max(g,Math.round(bw*o.scaleX/PX/g)*g)*PX/bw;o.scaleY=Math.max(g,Math.round(bh*o.scaleY/PX/g)*g)*PX/bh}
+ showDim(o)});
+canvas.on('object:rotating',e=>{const o=e.target;o.angle=Math.round(o.angle/5)*5;showDim(o)});
+canvas.on('object:modified',e=>{const o=e.target;
+ if(o.kind==='bars'&&(o.scaleX!==1||o.scaleY!==1)){const a={p:o.p,bw:o.bw*o.scaleX,bh:o.bh*o.scaleY,sp:o.sp,dir:o.dir};rebuild(o,()=>mkBars(a))}
+ after()});
+canvas.on('object:added',after);canvas.on('object:removed',after);
+canvas.on('selection:created',onSel);canvas.on('selection:updated',onSel);canvas.on('selection:cleared',()=>{$('dim').style.display='none';renderProps()});
+function onSel(){const o=canvas.getActiveObject();showDim(o);renderProps()}
+function dims(o){const q=pieces(o),pre=o.ref?'(ya contado) ':'',suf=(o.qty||1)>1?` ×${o.qty}`:'';return pre+dims0(o,q)+suf}
+function dims0(o,q){if(o.ref){q=pieces({...o,ref:false})}
+ if(o.kind==='seg')return `${num(q[0][1])} cm`;
+ if(o.kind==='sheet')return `chapa ${num(o.width*o.scaleX/PX)} × ${num(o.height*o.scaleY/PX)} cm`;
+ if(o.kind==='frame')return `${num(q[0][1])} × ${num(q[2][1])} cm`;
+ if(o.kind==='bars')return `${q.length/Math.max(1,o.qty||1)} barrotes de ${num(q[0][1])} cm`;
+ if(o.kind==='arc')return `arco r ${num(o.r*o.scaleX)} cm · ${num(q[0][1])} cm`;
+ if(o.kind==='vol')return `voluta · ${num(q[0][1])} cm`;
+ if(o.kind==='cat')return C[o.catId].name;
+ return `${canvas.getActiveObjects().length} partes`}
+function showDim(o){if(!o)return;const d=$('dim'),b=o.getBoundingRect();d.textContent=dims(o);d.style.display='block';d.style.left=b.left+'px';d.style.top=Math.max(0,b.top-26)+'px'}
+
+// ---- vistas: cada vista es un JSON de Fabric; la lista de materiales suma todas ----
+// Las vistas 2D son las seis caras de la caja 3D. map: (x,y) del plano en cm -> (u,v) de la cara. mirror indica que se mira desde atrás/abajo.
+const FACES=[
+ {id:'frente',name:'Frente',pl:'xy',at:()=>M.D,dims:()=>[M.W,M.H],map:(x,y)=>[x,M.H-y],unmap:(u,v)=>[u,M.H-v]},
+ {id:'fondo',name:'Fondo',pl:'xy',at:()=>0,dims:()=>[M.W,M.H],map:(x,y)=>[M.W-x,M.H-y],unmap:(u,v)=>[M.W-u,M.H-v]},
+ {id:'izq',name:'Lateral izq.',pl:'yz',at:()=>0,dims:()=>[M.D,M.H],map:(x,y)=>[x,M.H-y],unmap:(u,v)=>[u,M.H-v]},
+ {id:'der',name:'Lateral der.',pl:'yz',at:()=>M.W,dims:()=>[M.D,M.H],map:(x,y)=>[M.D-x,M.H-y],unmap:(u,v)=>[M.D-u,M.H-v]},
+ {id:'planta',name:'Planta (arriba)',pl:'xz',at:()=>M.H,dims:()=>[M.W,M.D],map:(x,y)=>[x,y],unmap:(u,v)=>[u,v]},
+ {id:'piso',name:'Piso (abajo)',pl:'xz',at:()=>0,dims:()=>[M.W,M.D],map:(x,y)=>[x,y],unmap:(u,v)=>[u,v]},
+];
+let loading=false,quiet=false,undo=[],views=FACES.map(f=>({id:f.id,name:f.name,json:null})),cur=0;
+function snapshot(){return JSON.stringify(canvas.toJSON(PROPS))}
+function persist(){try{localStorage.setItem('herreria.faces',JSON.stringify({views,cur}))}catch(e){}}
+let tmr;function after(){if(loading||quiet)return;clearTimeout(tmr);tmr=setTimeout(()=>{if(loading)return;const s=snapshot();views[cur].json=s;if(undo[undo.length-1]!==s){undo.push(s);if(undo.length>60)undo.shift()}persist();buildScene();renderBom()},60)}
+function load(json){return new Promise(res=>{loading=true;canvas.clear();const done=()=>{canvas.getObjects().forEach(decorate);guide();loading=false;ghosts();canvas.requestRenderAll();renderBom();renderProps();res()};if(!json)return done();canvas.loadFromJSON(json,done)})}
+function real(){return canvas.getObjects().filter(o=>o.kind!=='guide'&&o.kind!=='ghost')}
+// Fantasmas: proyección sobre esta cara de todo lo demás del modelo (caja, partes interiores, otras caras). No se editan ni se cuentan.
+function ghosts(){const f=FACES[cur],pl=PLANES[f.pl],I={x:0,y:1,z:2},mine=-2-cur,col=css('--muted');
+ canvas.getObjects().filter(o=>o.kind==='ghost').forEach(o=>canvas.remove(o));
+ const {ms,sh,ex}=members(),items=[],px=p=>{const [x,y]=f.unmap(p[I[pl.u]],p[I[pl.v]]);return [x*PX,y*PX]};
+ const line=(a,b,w,i)=>{if(i===mine)return;const A=px(a),B=px(b),len=Math.hypot(B[0]-A[0],B[1]-A[1]),sw=Math.max(w*PX,2);
+  items.push(len<1?new fabric.Circle({left:A[0]-sw/2,top:A[1]-sw/2,radius:sw/2,fill:col}):new fabric.Line([A[0],A[1],B[0],B[1]],{stroke:col,strokeWidth:sw}))};
+ const poly=pts=>items.push(new fabric.Polygon(pts.map(p=>({x:p[0],y:p[1]})),{fill:col,strokeWidth:0,opacity:.5}));
+ ms.forEach(m=>line(m.a,m.b,Math.max(P[m.p].w,.8),m.i));
+ ex.forEach(e=>{if(e.t==='bar')line(e.a,e.b,e.w,e.i);else if(e.i!==mine){const c=px(e.c);
+  if(e.t==='ball'||e.t==='ring')items.push(new fabric.Circle({left:c[0]-e.r*PX,top:c[1]-e.r*PX,radius:e.r*PX,fill:e.t==='ball'?col:'',stroke:col,strokeWidth:2}));
+  else{const n=v=>{const l=Math.hypot(...v)||1;return v.map(x=>x/l)},u=n(e.U),vv=n(e.V);poly([[-1,-1],[1,-1],[1,1],[-1,1]].map(([s,t])=>px([0,1,2].map(k=>e.c[k]+u[k]*s*e.w/2+vv[k]*t*e.h/2))))}}});
+ sh.forEach(x=>{if(x.i===mine)return;const c=(a,b)=>p3(x.pl,a,b,x.at);poly([c(0,0),c(x.w,0),c(x.w,x.h),c(0,x.h)].map(px))});
+ quiet=true;items.forEach(o=>{o.set({kind:'ghost',opacity:(o.opacity||1)*.3,selectable:false,evented:false,excludeFromExport:true,objectCaching:false});canvas.add(o);canvas.sendToBack(o)});
+ const g=canvas.getObjects().find(o=>o.kind==='guide');if(g)canvas.sendToBack(g);quiet=false;canvas.requestRenderAll()}
+// Rectángulo punteado con el tamaño de la cara. No se exporta ni se cuenta.
+function guide(){const old=canvas.getObjects().find(o=>o.kind==='guide');if(old)canvas.remove(old);const [w,h]=FACES[cur].dims();
+ const g=new fabric.Rect({kind:'guide',left:0,top:0,width:w*PX,height:h*PX,fill:'transparent',stroke:css('--accent'),strokeWidth:1,strokeUniform:true,strokeDashArray:[8,6],selectable:false,evented:false,excludeFromExport:true});canvas.add(g);canvas.sendToBack(g)}
+async function switchView(i){if(!loading)views[cur].json=snapshot();cur=i;await load(views[i].json);undo=[views[i].json||snapshot()];renderTabs();persist();fitView()}
+function faceDims(){const [w,h]=FACES[cur].dims();return `${w} × ${h} cm`}
+function renderTabs(){const n=i=>{try{const j=views[i].json;return j?JSON.parse(j).objects.length:0}catch(e){return 0}};
+ $('tabs').innerHTML=views.map((v,i)=>`<button data-v="${i}" class="${i===cur?'on':''}">${v.name}${i!==cur&&n(i)?' ·':''}</button>`).join('')
+ +`<span class="muted" style="margin-left:6px">cara ${faceDims()} · caja</span><input id="tW" type="number" value="${M.W}" title="Ancho de la caja cm"><span class="muted">×</span><input id="tH" type="number" value="${M.H}" title="Alto cm"><span class="muted">×</span><input id="tD" type="number" value="${M.D}" title="Profundidad cm"><span class="muted">cm</span><button id="tabFit" title="Toma el ancho y alto de lo dibujado">Ajustar cara al dibujo</button>`;
+ $('tabs').querySelectorAll('[data-v]').forEach(b=>b.addEventListener('click',()=>switchView(+b.dataset.v)));
+ ['tW','tH','tD'].forEach(id=>$(id).addEventListener('change',()=>{M.W=Math.max(5,+$('tW').value||M.W);M.H=Math.max(5,+$('tH').value||M.H);M.D=Math.max(1,+$('tD').value||M.D);renderForm();guide();frameCam();update3();renderTabs()}));
+ $('tabFit').addEventListener('click',()=>{const objs=real().filter(o=>!o.ref).map(o=>o.toObject(PROPS));if(!objs.length)return;const [,,x1,y1]=bbox2d(objs),f=FACES[cur],pl=PLANES[f.pl];M[AXS[pl.u]]=Math.round(x1);M[AXS[pl.v]]=Math.round(y1);renderForm();guide();frameCam();update3();renderTabs()})}
+$('btnUndo').addEventListener('click',()=>{if(undo.length<2)return;undo.pop();load(undo[undo.length-1]).then(()=>{views[cur].json=undo[undo.length-1];persist()})});
+function toggleRef(){const os=canvas.getActiveObjects();if(!os.length)return;os.forEach(o=>{o.ref=!o.ref;o.set('opacity',o.ref?.35:1)});canvas.requestRenderAll();after();renderProps();showDim(canvas.getActiveObject())}
+$('btnRef').addEventListener('click',toggleRef);
+$('btnDel').addEventListener('click',del);
+function del(){canvas.getActiveObjects().forEach(o=>canvas.remove(o));canvas.discardActiveObject();canvas.requestRenderAll()}
+$('btnDup').addEventListener('click',dup);
+function dup(){const o=canvas.getActiveObject();if(!o)return;o.clone(c=>{c.set({left:o.left+snapPx()*2,top:o.top+snapPx()*2});if(c.type==='activeSelection'){c.canvas=canvas;c.forEachObject(x=>{decorate(x);canvas.add(x)});c.setCoords()}else{decorate(c);canvas.add(c)}canvas.setActiveObject(c);canvas.requestRenderAll()},PROPS)}
+document.addEventListener('keydown',e=>{if(S.mode!=='2d'||/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName))return;
+ if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();del()}
+ if((e.ctrlKey||e.metaKey)&&e.key==='z'){e.preventDefault();$('btnUndo').click()}
+ if((e.ctrlKey||e.metaKey)&&e.key==='d'){e.preventDefault();dup()}
+ if(e.key==='r'||e.key==='R')toggleRef()});
+document.querySelectorAll('[data-add]').forEach(b=>b.addEventListener('click',()=>add(b.dataset.add)));
+$('catButtons').innerHTML=CATALOG.map(c=>`<button data-cat="${c.id}">${c.name}</button>`).join('');
+document.querySelectorAll('[data-cat]').forEach(b=>b.addEventListener('click',()=>add('cat',{catId:b.dataset.cat})));
+$('curProfile').innerHTML=PROFILES.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');$('curProfile').value='cu12';
+$('snap').value=S.snap;$('snap').addEventListener('change',e=>{S.snap=+e.target.value;saveCfg();grid()});
+
+// vista: zoom con rueda, pan con alt o botón
+canvas.on('mouse:wheel',o=>{let z=canvas.getZoom()*Math.pow(0.999,o.e.deltaY);z=Math.min(6,Math.max(.15,z));canvas.zoomToPoint({x:o.e.offsetX,y:o.e.offsetY},z);o.e.preventDefault();o.e.stopPropagation();grid()});
+let pan=false,panning=null;
+$('btnPan').addEventListener('click',()=>{pan=!pan;$('btnPan').classList.toggle('on',pan);canvas.selection=!pan;canvas.skipTargetFind=pan;canvas.defaultCursor=pan?'grab':'default'});
+canvas.on('mouse:down',o=>{if(pan||o.e.altKey){panning={x:o.e.clientX,y:o.e.clientY}}});
+canvas.on('mouse:move',o=>{if(!panning)return;canvas.relativePan({x:o.e.clientX-panning.x,y:o.e.clientY-panning.y});panning={x:o.e.clientX,y:o.e.clientY};grid()});
+canvas.on('mouse:up',()=>{panning=null});
+function zoomBy(k){const c={x:canvas.getWidth()/2,y:canvas.getHeight()/2};canvas.zoomToPoint(c,Math.min(6,Math.max(.15,canvas.getZoom()*k)));grid()}
+$('zIn').addEventListener('click',()=>zoomBy(1.25));$('zOut').addEventListener('click',()=>zoomBy(.8));
+function fitView(){const os=canvas.getObjects();if(!os.length){canvas.setViewportTransform([1,0,0,1,40,40]);grid();return}
+ let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;os.forEach(o=>{const b=o.getBoundingRect(true,true);x0=Math.min(x0,b.left);y0=Math.min(y0,b.top);x1=Math.max(x1,b.left+b.width);y1=Math.max(y1,b.top+b.height)});
+ const z=Math.min(6,Math.max(.15,Math.min(canvas.getWidth()/(x1-x0+120),canvas.getHeight()/(y1-y0+120))));
+ canvas.setViewportTransform([z,0,0,z,(canvas.getWidth()-(x1-x0)*z)/2-x0*z,(canvas.getHeight()-(y1-y0)*z)/2-y0*z]);grid()}
+$('btnFit').addEventListener('click',fitView);
+
+// ---- panel del elemento ----
+function fld(k,label,v,step=1){return `<label>${label}<input data-k="${k}" type="number" step="${step}" value="${+(+v).toFixed(2)}"></label>`}
+function renderProps(){const o=canvas.getActiveObject(),box=$('props');
+ if(!o||o.type==='activeSelection'){box.innerHTML=`<h2>Parte</h2><div class="muted">${o?dims(o)+' seleccionadas. Arrastralas juntas o borralas.':'Tocá una parte del plano para editarla con números.'}</div>`;return}
+ const ps=`<label>Perfil<select data-k="p">${PROFILES.map(p=>`<option value="${p.id}"${p.id===o.p?' selected':''}>${p.name}</option>`).join('')}</select></label>`;
+ let h='';
+ if(o.kind==='seg')h=ps+fld('len','Largo cm',o.width*o.scaleX/PX)+fld('angle','Giro °',o.angle);
+ if(o.kind==='frame')h=ps+fld('w','Ancho cm',o.width*o.scaleX/PX)+fld('h','Alto cm',o.height*o.scaleY/PX)+fld('angle','Giro °',o.angle);
+ if(o.kind==='bars')h=ps+fld('w','Ancho zona cm',o.bw*o.scaleX/PX)+fld('h','Alto zona cm',o.bh*o.scaleY/PX)+fld('sp','Paso cm',o.sp)+`<label>Dirección<select data-k="dir"><option value="v"${o.dir==='v'?' selected':''}>Verticales</option><option value="h"${o.dir==='h'?' selected':''}>Horizontales</option></select></label>`+fld('angle','Giro °',o.angle);
+ if(o.kind==='arc')h=ps+fld('r','Radio cm',o.r*o.scaleX)+fld('sweep','Abertura °',o.sweep,5)+fld('angle','Giro °',o.angle);
+ if(o.kind==='vol')h=ps+fld('r1','Radio externo cm',o.r1*o.scaleX,.5)+fld('r0','Radio interno cm',o.r0*o.scaleX,.5)+fld('turns','Vueltas',o.turns,.25)+fld('angle','Giro °',o.angle);
+ if(o.kind==='cat')h=`<label>Pieza<select data-k="catId">${CATALOG.map(c=>`<option value="${c.id}"${c.id===o.catId?' selected':''}>${c.name}</option>`).join('')}</select></label>`+fld('angle','Giro °',o.angle);
+ if(o.kind==='sheet')h=`<label>Chapa<select data-k="p">${SHEETS.map(x=>`<option value="${x.id}"${x.id===o.p?' selected':''}>${x.name}</option>`).join('')}</select></label>`+fld('w','Ancho cm',o.width*o.scaleX/PX)+fld('h','Alto cm',o.height*o.scaleY/PX)+fld('angle','Giro °',o.angle);
+ h+=fld('qty','Cantidad',o.qty||1);
+ box.innerHTML=`<h2>Parte</h2><div><b>${dims(o)}</b></div><div class="row">${h}</div><div class="row"><button id="pRef">${o.ref?'Volver a contar en esta vista':'Marcar como ya contado en otra vista'}</button></div><div class="muted">Cantidad: piezas iguales que quedan una detrás de otra en esta vista (las 4 patas de una mesa son 2 visibles × 2).</div>`;
+ box.querySelectorAll('[data-k]').forEach(inp=>inp.addEventListener('change',()=>apply(o,inp.dataset.k,inp.type==='number'?+inp.value:inp.value)));
+ $('pRef').addEventListener('click',toggleRef);
+}
+function apply(o,k,v){const st=css('--steel');let n=o;
+ if(k==='angle'){o.set('angle',v)}
+ else if(k==='qty'){o.qty=Math.max(1,Math.round(v))}
+ else if(o.kind==='sheet'){if(k==='p')o.p=v;if(k==='w')o.set('scaleX',v*PX/o.width);if(k==='h')o.set('scaleY',v*PX/o.height)}
+ else if(k==='p'){const w=Math.max(P[v].w*PX,2);o.p=v;
+  if(o.kind==='seg')o.set({height:w});else if(o.kind==='frame'||o.kind==='arc'||o.kind==='vol')o.set({strokeWidth:w});
+  else if(o.kind==='bars')n=rebuild(o,()=>mkBars({p:v,bw:o.bw*o.scaleX,bh:o.bh*o.scaleY,sp:o.sp,dir:o.dir}))}
+ else if(o.kind==='seg'&&k==='len')o.set('scaleX',v*PX/o.width);
+ else if(o.kind==='frame'&&k==='w')o.set('scaleX',v*PX/o.width);
+ else if(o.kind==='frame'&&k==='h')o.set('scaleY',v*PX/o.height);
+ else if(o.kind==='bars'){const a={p:o.p,bw:o.bw*o.scaleX,bh:o.bh*o.scaleY,sp:o.sp,dir:o.dir};if(k==='w')a.bw=v*PX;if(k==='h')a.bh=v*PX;if(k==='sp')a.sp=Math.max(1,v);if(k==='dir')a.dir=v;n=rebuild(o,()=>mkBars(a))}
+ else if(o.kind==='arc'){const a={p:o.p,r:o.r*o.scaleX,sweep:o.sweep};if(k==='r')a.r=Math.max(1,v);if(k==='sweep')a.sweep=Math.min(355,Math.max(10,v));n=rebuild(o,()=>mkArc(a))}
+ else if(o.kind==='vol'){const a={p:o.p,r0:o.r0*o.scaleX,r1:o.r1*o.scaleX,turns:o.turns};if(k==='r1')a.r1=Math.max(a.r0+.5,v);if(k==='r0')a.r0=Math.max(.5,Math.min(a.r1-.5,v));if(k==='turns')a.turns=Math.max(.25,v);n=rebuild(o,()=>mkVol(a))}
+ else if(o.kind==='cat'&&k==='catId')n=rebuild(o,()=>mkCat(v));
+ n.setCoords();canvas.requestRenderAll();canvas.fire('object:modified',{target:n});showDim(n);renderProps()}
+
+// ---- materiales ----
+function bomObjects(){return objects3d()}
+function renderBom(){const r=calc(bomObjects(),S);
+ $('bom').innerHTML=`<tr><th>Perfil</th><th>Piezas</th><th>Metros</th><th>Barras</th><th>Desp.</th><th>kg</th><th>Costo</th></tr>`
+ +r.rows.map(x=>`<tr><td>${x.name}${x.over?' <span class="warn">(pieza &gt; 6 m)</span>':''}<div class="cuts">${x.cuts.map(b=>'['+b.cuts.map(c=>num(c,0)).join('+')+(b.rem>=20?' · sobra '+num(b.rem,0):'')+']').join(' ')}</div></td><td>${x.n}</td><td>${num(x.m,2)}</td><td>${x.bars}</td><td>${num(x.waste*100,0)}%</td><td>${num(x.kg)}</td><td>${fmt(x.cost)}</td></tr>`).join('')
+ +r.sheetRows.map(x=>`<tr><td>${x.name}<div class="cuts">${num(x.m2,2)} m² netos, ${Math.round((SHEET_WASTE-1)*100)}% desperdicio</div></td><td></td><td></td><td>${x.hojas} hoja${x.hojas>1?'s':''}</td><td></td><td>${num(x.kg)}</td><td>${fmt(x.cost)}</td></tr>`).join('')
+ +r.catRows.map(x=>`<tr><td>${x.name}</td><td>${x.n}</td><td></td><td></td><td></td><td></td><td>${fmt(x.cost)}</td></tr>`).join('')
+ +(r.rows.length+r.catRows.length+r.sheetRows.length?'':'<tr><td colspan="7" class="muted">El plano está vacío. Agregá un marco para empezar.</td></tr>');
+ const bi=BOMINFO,src=bi.bySrc.filter(b=>b.n||b.cat||b.m2).map(b=>`<b>${b.src}</b>: ${b.n?b.n+' hierros, '+num(b.m,1)+' m':''}${b.cat?(b.n?' · ':'')+b.cat+' pzas catálogo':''}${b.m2?(b.n||b.cat?' · ':'')+num(b.m2,2)+' m² chapa':''}`).join('<br>');
+ $('origen').innerHTML=(src?`<div class="muted" style="margin-top:4px">De dónde sale: <br>${src}</div>`:'')+(bi.dups?`<div class="muted">${bi.dups} hierro${bi.dups>1?'s':''} superpuesto${bi.dups>1?'s':''} (arista de caja y borde dibujado en el mismo lugar) contado${bi.dups>1?'s':''} una sola vez.</div>`:'')+bi.warn.map(w=>`<div class="warn">${w}</div>`).join('');
+ $('kg').textContent=num(r.kg)+' kg';$('mat').textContent=fmt(r.mat);$('total').textContent=fmt(r.total)}
+function renderPrices(){
+ $('prices').innerHTML=`<tr><th>Perfil</th><th>kg/m</th><th>$ / barra</th></tr>`+PROFILES.map(p=>`<tr><td>${p.name}</td><td>${num(p.kgm,3)}</td><td><input data-price="${p.id}" type="number" step="100" value="${S.prices[p.id]??p.price}"></td></tr>`).join('');
+ $('sheetprices').innerHTML=`<tr><th>Chapa</th><th>kg/m²</th><th>$ / hoja</th></tr>`+SHEETS.map(x=>`<tr><td>${x.name}</td><td>${num(x.e*7.85,1)}</td><td><input data-sprice="${x.id}" type="number" step="500" value="${S.sheetPrices[x.id]??x.price}"></td></tr>`).join('');
+ document.querySelectorAll('[data-sprice]').forEach(i=>i.addEventListener('input',()=>{S.sheetPrices[i.dataset.sprice]=+i.value;renderBom();saveCfg()}));
+ $('catprices').innerHTML=`<tr><th>Pieza</th><th>$ / unidad</th></tr>`+CATALOG.map(c=>`<tr><td>${c.name}</td><td><input data-cprice="${c.id}" type="number" step="50" value="${S.catPrices[c.id]??c.price}"></td></tr>`).join('');
+ document.querySelectorAll('[data-price]').forEach(i=>i.addEventListener('input',()=>{S.prices[i.dataset.price]=+i.value;renderBom();saveCfg()}));
+ document.querySelectorAll('[data-cprice]').forEach(i=>i.addEventListener('input',()=>{S.catPrices[i.dataset.cprice]=+i.value;renderBom();saveCfg()}));
+ $('labor').value=S.labor;$('extras').value=S.extras}
+function saveCfg(){try{localStorage.setItem('herreria.cfg',JSON.stringify(S))}catch(e){}}
+$('labor').addEventListener('input',e=>{S.labor=+e.target.value;renderBom();saveCfg()});
+$('extras').addEventListener('input',e=>{S.extras=+e.target.value;renderBom();saveCfg()});
+function summary(){const r=calc(bomObjects(),S);return ['PRESUPUESTO HERRERÍA','',...r.rows.map(x=>`• ${x.name}: ${x.bars} barra(s) de 6 m (${num(x.m,1)} m útiles, ${num(x.kg)} kg) ${fmt(x.cost)}`),...r.sheetRows.map(x=>`• ${x.name}: ${x.hojas} hoja(s) de 1x2 m (${num(x.m2,2)} m², ${num(x.kg)} kg) ${fmt(x.cost)}`),...r.catRows.map(x=>`• ${x.name} x${x.n}: ${fmt(x.cost)}`),'',`Peso total: ${num(r.kg)} kg`,`Material: ${fmt(r.mat)}`,`Mano de obra: ${S.labor}%`,`Pintura y consumibles: ${fmt(S.extras)}`,`TOTAL: ${fmt(r.total)}`].join('\n')}
+$('btnCopy').addEventListener('click',async()=>{const t=summary();try{await navigator.clipboard.writeText(t);$('btnCopy').textContent='Copiado'}catch(e){const ta=document.createElement('textarea');ta.value=t;ta.style.width='100%';$('btnCopy').after(ta);ta.select();$('btnCopy').textContent='Seleccioná y copiá el texto'}setTimeout(()=>$('btnCopy').textContent='Copiar presupuesto para WhatsApp',2500)});
+
+// ---- ejemplo ----
+async function resetViews(){views.forEach(v=>v.json=null);cur=0;undo=[];await load(null);renderTabs()}
+async function sample(){M={W:150,H:120,D:3,p:'tu30',edges:{top:false,bot:false,vert:false},parts:[]};renderForm();frameCam();await resetViews();loading=true;
+ add('frame',{p:'tu30',w:150,h:120},{x:0,y:0});
+ add('bars',{p:'cu12',w:150,h:120,sp:12},{x:0,y:0});
+ add('seg',{p:'pl25',len:150},{x:0,y:30});
+ add('vol',{p:'pl12',r1:10},{x:15,y:5});add('vol',{p:'pl12',r1:10},{x:115,y:5});
+ add('arc',{p:'pl12',r:14},{x:61,y:3});
+ ['lanza','lanza','lanza'].forEach((c,i)=>add('cat',{catId:c},{x:34+i*35,y:-12}));
+ loading=false;after();fitView()}
+$('btnSample').addEventListener('click',sample);
+$('btnClear').addEventListener('click',()=>{real().forEach(o=>canvas.remove(o));canvas.discardActiveObject();after();fitView()});
+
+
+// ---- foto a estimado ----
+try{$('apikey').value=localStorage.getItem('herreria.key')||''}catch(e){}
+$('apikey').addEventListener('input',e=>{try{localStorage.setItem('herreria.key',e.target.value)}catch(x){}});
+const PIDS=PROFILES.map(p=>p.id),CIDS=CATALOG.map(c=>c.id);
+const SCHEMA={type:'object',additionalProperties:false,required:['ancho_cm','alto_cm','marco_perfil','barrotes','travesanos','volutas','arcos','catalogo','confianza','notas'],properties:{
+ ancho_cm:{type:'number'},alto_cm:{type:'number'},marco_perfil:{type:'string',enum:PIDS},
+ barrotes:{type:'object',additionalProperties:false,required:['cantidad','perfil','orientacion'],properties:{cantidad:{type:'integer'},perfil:{type:'string',enum:PIDS},orientacion:{type:'string',enum:['vertical','horizontal']}}},
+ travesanos:{type:'object',additionalProperties:false,required:['cantidad','perfil'],properties:{cantidad:{type:'integer'},perfil:{type:'string',enum:PIDS}}},
+ volutas:{type:'object',additionalProperties:false,required:['cantidad','perfil','radio_cm'],properties:{cantidad:{type:'integer'},perfil:{type:'string',enum:PIDS},radio_cm:{type:'number'}}},
+ arcos:{type:'object',additionalProperties:false,required:['cantidad','perfil','radio_cm'],properties:{cantidad:{type:'integer'},perfil:{type:'string',enum:PIDS},radio_cm:{type:'number'}}},
+ catalogo:{type:'array',items:{type:'object',additionalProperties:false,required:['pieza','cantidad'],properties:{pieza:{type:'string',enum:CIDS},cantidad:{type:'integer'}}}},
+ confianza:{type:'string',enum:['baja','media','alta']},notas:{type:'string'}}};
+const SYSTEM=`Sos un herrero con 30 años de taller en Argentina. Te mandan la foto de una reja, portón, baranda o similar y tenés que estimar qué lleva para cotizar.
+Perfiles disponibles (usá solo estos ids): ${PROFILES.map(p=>p.id+' = '+p.name).join('; ')}.
+Piezas de catálogo (compradas hechas, usá solo estos ids): ${CATALOG.map(c=>c.id+' = '+c.name).join('; ')}.
+Reglas: si no te dan medidas, estimalas por proporción con referencias de la foto (puerta 200 cm, ladrillo 25 cm, persona 170 cm) y marcá confianza baja. Los barrotes son las barras repetidas; contalos. Los travesaños son horizontales que cruzan todo el ancho (sin contar el marco). Las volutas hechas en taller van en volutas; las que parecen compradas, en catalogo. En notas explicá en dos líneas qué supusiste.`;
+function resize(file){return new Promise((res,rej)=>{const img=new Image();img.onload=()=>{const k=Math.min(1,1200/Math.max(img.width,img.height));const c=document.createElement('canvas');c.width=img.width*k;c.height=img.height*k;c.getContext('2d').drawImage(img,0,0,c.width,c.height);res(c.toDataURL('image/jpeg',.85).split(',')[1])};img.onerror=rej;img.src=URL.createObjectURL(file)})}
+async function build(o){setMode('2d');const W=o.ancho_cm,H=o.alto_cm;M={W,H,D:3,p:o.marco_perfil,edges:{top:false,bot:false,vert:false},parts:[]};renderForm();frameCam();await resetViews();loading=true;
+ add('frame',{p:o.marco_perfil,w:W,h:H},{x:0,y:0});
+ if(o.barrotes.cantidad>0){const v=o.barrotes.orientacion==='vertical';add('bars',{p:o.barrotes.perfil,w:W,h:H,sp:Math.max(1,Math.round((v?W:H)/(o.barrotes.cantidad+1))),dir:v?'v':'h'},{x:0,y:0})}
+ for(let i=1;i<=o.travesanos.cantidad;i++)add('seg',{p:o.travesanos.perfil,len:W},{x:0,y:H*i/(o.travesanos.cantidad+1)});
+ for(let i=0;i<o.volutas.cantidad;i++){const r=o.volutas.radio_cm||10;add('vol',{p:o.volutas.perfil,r1:r},{x:W*(i+1)/(o.volutas.cantidad+1)-r,y:5})}
+ for(let i=0;i<o.arcos.cantidad;i++){const r=o.arcos.radio_cm||15;add('arc',{p:o.arcos.perfil,r},{x:W*(i+1)/(o.arcos.cantidad+1)-r,y:H/2-r})}
+ let k=0,nc=o.catalogo.reduce((a,c)=>a+c.cantidad,0);for(const c of o.catalogo)for(let i=0;i<c.cantidad;i++){k++;add('cat',{catId:c.pieza},{x:W*k/(nc+1)-C[c.pieza].s/2,y:-12})}
+ loading=false;after();fitView()}
+$('btnEst').addEventListener('click',async()=>{const st=$('estStatus'),key=$('apikey').value.trim(),file=$('photo').files[0];
+ if(!key){st.textContent='Falta la clave API.';return}if(!file){st.textContent='Elegí una foto primero.';return}
+ st.textContent='Analizando la foto...';$('btnEst').disabled=true;
+ try{const data=await resize(file);const hw=+$('hintW').value,hh=+$('hintH').value;
+  const text='Estimá materiales y cantidades de esta pieza.'+(hw||hh?` Medidas reales conocidas: ${hw?'ancho '+hw+' cm':''} ${hh?'alto '+hh+' cm':''}.`:' No tengo medidas, estimalas.');
+  const res=await fetch('https://api.anthropic.com/v1/messages',{method:'POST',headers:{'content-type':'application/json','x-api-key':key,'anthropic-version':'2026-10-21','anthropic-dangerous-direct-browser-access':'true','anthropic-beta':'server-side-fallback-2026-07-01'},
+   body:JSON.stringify({model:'claude-opus-5-5',max_tokens:4000,fallbacks:'default',system:SYSTEM,output_config:{format:{type:'json_schema',schema:SCHEMA}},
+    messages:[{role:'user',content:[{type:'image',source:{type:'base64',media_type:'image/jpeg',data}},{type:'text',text}]}]})});
+  const j=await res.json();if(!res.ok)throw new Error(j.error?.message||res.status);
+  if(j.stop_reason==='refusal')throw new Error('El modelo no quiso analizar esta imagen: '+(j.stop_details?.explanation||''));
+  const txt=j.content.find(b=>b.type==='text')?.text;if(!txt)throw new Error('Respuesta sin texto');
+  const o=JSON.parse(txt);await build(o);
+  st.innerHTML=`<b>Confianza ${o.confianza}.</b> ${o.notas} <span class="muted">Tocá cada parte para corregir medidas y perfiles.</span>`;
+ }catch(e){st.textContent='No se pudo estimar: '+e.message}
+ $('btnEst').disabled=false});
+
+// ===== 3D: un modelo paramétrico, cada hierro existe una vez =====
+// Planos: u y v son los ejes de la cara, n el eje normal. 'at' es la posición sobre n en cm.
+const PLANES={xz:{name:'Horizontal (estante, tapa, piso)',u:'x',v:'z',n:'y'},xy:{name:'Frente / fondo',u:'x',v:'y',n:'z'},yz:{name:'Lateral izq. / der.',u:'z',v:'y',n:'x'}};
+const AXS={x:'W',y:'H',z:'D'};
+let M={W:80,H:90,D:50,p:'an25',edges:{top:true,bot:false,vert:true},parts:[]},sel3=null;
+try{const m=JSON.parse(localStorage.getItem('herreria.m3d'));if(m&&m.parts)M=m}catch(e){}
+function saveM(){try{localStorage.setItem('herreria.m3d',JSON.stringify(M))}catch(e){}}
+function p3(pl,u,v,at){const o={};o[pl.u]=u;o[pl.v]=v;o[pl.n]=at;return [o.x,o.y,o.z]}
+// Devuelve hierros {p,a,b,len,i} y chapas {p,w,h,pl,at,i}; i = índice de parte, -1 = caja.
+function members(){const ms=[],sh=[],ex=[],{W,H,D,p,edges:E}=M;
+ const seg=(a,b,p,i)=>ms.push({p,a,b,i,len:Math.hypot(b[0]-a[0],b[1]-a[1],b[2]-a[2])});
+ if(E.top){seg([0,H,0],[W,H,0],p,-1);seg([0,H,D],[W,H,D],p,-1);seg([0,H,0],[0,H,D],p,-1);seg([W,H,0],[W,H,D],p,-1)}
+ if(E.bot){seg([0,0,0],[W,0,0],p,-1);seg([0,0,D],[W,0,D],p,-1);seg([0,0,0],[0,0,D],p,-1);seg([W,0,0],[W,0,D],p,-1)}
+ if(E.vert){seg([0,0,0],[0,H,0],p,-1);seg([W,0,0],[W,H,0],p,-1);seg([0,0,D],[0,H,D],p,-1);seg([W,0,D],[W,H,D],p,-1)}
+ M.parts.forEach((q,i)=>{const pl=PLANES[q.plane],U=M[AXS[pl.u]],V=M[AXS[pl.v]],at=q.at,P=(u,v)=>p3(pl,u,v,at);
+  if(q.type==='frame'){seg(P(0,0),P(U,0),q.p,i);seg(P(0,V),P(U,V),q.p,i);seg(P(0,0),P(0,V),q.p,i);seg(P(U,0),P(U,V),q.p,i)}
+  if(q.type==='bars'){const along=q.dir==='u',span=along?V:U,n=barN(span,q.sp),pitch=span/(n+1);for(let k=1;k<=n;k++)along?seg(P(0,pitch*k),P(U,pitch*k),q.p,i):seg(P(pitch*k,0),P(pitch*k,V),q.p,i)}
+  if(q.type==='bar'){q.dir==='u'?seg(P(0,q.off),P(U,q.off),q.p,i):seg(P(q.off,0),P(q.off,V),q.p,i)}
+  if(q.type==='sheet')sh.push({p:q.sheet,w:U,h:V,pl,at,i});
+  });
+ FACES.forEach((f,k)=>face3d(f,k,ex));
+ return {ms,sh,ex}}
+// Objetos de una vista 2D (JSON de Fabric) convertidos a primitivas 3D sobre una cara. Lo marcado "ya contado" no se monta.
+function viewObjs(id){const k=FACES.findIndex(f=>f.id===id),v=views[k];if(!v)return [];const j=(k===cur&&!loading)?snapshot():v.json;try{return j?JSON.parse(j).objects.filter(o=>o.kind!=='guide'):[]}catch(e){return []}}
+function bbox2d(objs){let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;for(const o of objs){const f=xf2(o),w=o.width||0,h=o.height||0;for(const [lx,ly] of [[0,0],[w,0],[0,h],[w,h]]){const [x,y]=f(lx,ly);x0=Math.min(x0,x);y0=Math.min(y0,y);x1=Math.max(x1,x);y1=Math.max(y1,y)}}return x0>x1?[0,0,0,0]:[x0,y0,x1,y1]}
+function xf2(o){const a=(o.angle||0)*Math.PI/180,sx=o.scaleX||1,sy=o.scaleY||1,c=Math.cos(a),sn=Math.sin(a);return (lx,ly)=>[(o.left+lx*sx*c-ly*sy*sn)/PX,(o.top+lx*sx*sn+ly*sy*c)/PX]}
+// i de cara = -2-k para distinguirlas de las partes; el clic en 3D lleva a editar esa cara.
+let CURVE=0;
+function face3d(f,k,ex){const objs=viewObjs(f.id).filter(o=>!o.ref);if(!objs.length)return;const pl=PLANES[f.pl],at=f.at(),i=-2-k,src=f.name;let cid=null;
+ const to3=(x,y)=>{const [u,v]=f.map(x,y);return p3(pl,u,v,at)};
+ for(const o of objs){const f=xf2(o),T=(lx,ly)=>to3(...f(lx,ly)),w=o.p&&P[o.p]?Math.max(P[o.p].w,.8):1,W=o.width||0,H=o.height||0;
+  const line=(a,b)=>ex.push({t:'bar',a:T(...a),b:T(...b),w,i,p:o.p,qty:Math.max(1,o.qty||1),curve:cid,src}),chain=pts=>{cid=cid||++CURVE;for(let k=1;k<pts.length;k++)line(pts[k-1],pts[k]);cid=null};
+  if(o.kind==='seg')line([0,H/2],[W,H/2]);
+  else if(o.kind==='frame'){line([0,0],[W,0]);line([W,0],[W,H]);line([W,H],[0,H]);line([0,H],[0,0])}
+  else if(o.kind==='bars'){const v=o.dir==='v',span=v?o.bw:o.bh,n=barN(span/PX,o.sp),pitch=span/(n+1);for(let k=1;k<=n;k++)v?line([pitch*k,0],[pitch*k,o.bh]):line([0,pitch*k],[o.bw,pitch*k])}
+  else if(o.kind==='arc'){const r=o.r*PX,t=o.sweep*Math.PI/180,pts=[];for(let k=0;k<=32;k++){const a=Math.PI-t*k/32;pts.push([r*Math.cos(a),-r*Math.sin(a)])}const mx=Math.min(...pts.map(p=>p[0])),my=Math.min(...pts.map(p=>p[1]));chain(pts.map(p=>[p[0]-mx,p[1]-my]))}
+  else if(o.kind==='vol'){const pts=volPts(o.r0,o.r1,o.turns).map(p=>[p[0]*PX,p[1]*PX]),mx=Math.min(...pts.map(p=>p[0])),my=Math.min(...pts.map(p=>p[1]));chain(pts.map(p=>[p[0]-mx,p[1]-my]))}
+  else if(o.kind==='sheet'||o.kind==='cat'){const c=T(W/2,H/2),u=T(1,0),o0=T(0,0),vv=T(0,1);const U=[u[0]-o0[0],u[1]-o0[1],u[2]-o0[2]],VV=[vv[0]-o0[0],vv[1]-o0[1],vv[2]-o0[2]];
+   if(o.kind==='sheet')ex.push({t:'plate',c,U,V:VV,w:W*(o.scaleX||1)/PX,h:H*(o.scaleY||1)/PX,e:Math.max(SH[o.p]?SH[o.p].e/10:.2,.6),i,ghost:true});
+   else{const cs=C[o.catId]||{shape:'ball',s:5},sz=cs.s;
+    if(cs.shape==='ball')ex.push({t:'ball',c,r:sz/2,i});
+    else if(cs.shape==='ring')ex.push({t:'ring',c,U,V:VV,r:sz/2,i});
+    else if(cs.shape==='spiral'){cid='cat';const pts=volPts(.8,sz/2,1.5).map(p=>[W/2+p[0]*PX,H/2+p[1]*PX]);chain(pts)}
+    else ex.push({t:'plate',c,U,V:VV,w:W/PX,h:H/PX,e:1,i})}}}}
+function frameCam(){orbit.r=Math.max(M.W,M.H,M.D)*2.8}
+// Lista para el cálculo. Dos hierros rectos con el mismo perfil en el mismo lugar (arista de caja + borde de un marco dibujado) se cuentan una vez.
+let BOMINFO={dups:0,warn:[],bySrc:[]};
+function objects3d(){const {ms,sh,ex}=members(),seen=new Map(),geo=new Map(),curves=new Map(),out=[],warn=[];let dups=0;
+ const r=v=>v.map(x=>Math.round(x*2)/2).join(','),gk=(a,b)=>{const A=r(a),B=r(b);return A<B?A+'|'+B:B+'|'+A},len=(a,b)=>Math.hypot(b[0]-a[0],b[1]-a[1],b[2]-a[2]);
+ const addS=(p,a,b,qty,src)=>{if(len(a,b)<.05)return;const g=gk(a,b),k=p+'|'+g;if(seen.has(k)){dups++;seen.get(k).qty=Math.max(seen.get(k).qty,qty);return}
+  if(geo.has(g)&&geo.get(g)!==p){const w=`${P[geo.get(g)].name} y ${P[p].name} ocupan el mismo lugar (${src}). Se cuentan los dos.`;if(!warn.includes(w))warn.push(w)}geo.set(g,p);
+  const e={kind:'seg',p,width:len(a,b)*PX,qty,src};seen.set(k,e);out.push(e)};
+ ms.forEach(m=>addS(m.p,m.a,m.b,1,m.i<0?'Caja':'Partes interiores'));
+ ex.forEach(e=>{if(e.t!=='bar'||!e.p||e.curve==='cat')return;if(e.curve){let c=curves.get(e.curve);if(!c){c={kind:'seg',p:e.p,width:0,qty:e.qty,src:e.src};curves.set(e.curve,c)}c.width+=len(e.a,e.b)*PX}else addS(e.p,e.a,e.b,e.qty,e.src)});
+ out.push(...curves.values());
+ sh.forEach(x=>out.push({kind:'sheet',p:x.p,width:x.w*PX,height:x.h*PX,src:'Partes interiores'}));
+ FACES.forEach(f=>viewObjs(f.id).forEach(o=>{if((o.kind==='cat'||o.kind==='sheet')&&!o.ref)out.push({...o,src:f.name})}));
+ const by={};out.forEach(o=>{const q=Math.max(1,o.qty||1),b=by[o.src]=by[o.src]||{src:o.src,n:0,m:0,cat:0,m2:0};if(o.kind==='seg'){b.n+=q;b.m+=o.width*(o.scaleX||1)/PX*q/100}else if(o.kind==='cat')b.cat+=q;else b.m2+=sheetM2(o)});
+ BOMINFO={dups,warn,bySrc:Object.values(by)};return out}
+
+// escena
+const c3=$('c3'),wrap3=$('wrap3');
+let renderer;try{renderer=new THREE.WebGLRenderer({canvas:c3,antialias:true})}catch(e){renderer=null;$('v3dim').textContent='Este navegador no tiene WebGL: el 3D no se puede mostrar, el cálculo sí funciona.'}
+const scene=new THREE.Scene();
+const cam=new THREE.PerspectiveCamera(40,1,1,5000);
+const ortho=[0,1,2].map(()=>new THREE.OrthographicCamera(-1,1,1,-1,1,5000));
+scene.add(new THREE.AmbientLight(0xffffff,.65));
+const sun=new THREE.DirectionalLight(0xffffff,.7);sun.position.set(200,400,300);scene.add(sun);
+let group=new THREE.Group();scene.add(group);
+let orbit={th:.7,ph:1.05,r:280};
+const ray=new THREE.Raycaster(),mouse=new THREE.Vector2();
+function hex(v){return new THREE.Color(css(v))}
+function center(){return new THREE.Vector3(M.W/2,M.H/2,M.D/2)}
+function buildScene(){scene.remove(group);group=new THREE.Group();const st=hex('--steel'),acc=hex('--accent'),{ms,sh,ex}=members();
+ const X=new THREE.Vector3(1,0,0),Z=new THREE.Vector3(0,0,1),mat=(i,ghost)=>new THREE.MeshLambertMaterial({color:i===sel3?acc:st,transparent:!!ghost,opacity:ghost?.75:1});
+ const bar=(a,b,w,i)=>{const A=new THREE.Vector3(...a),B=new THREE.Vector3(...b),len=A.distanceTo(B);if(len<.05)return;const mesh=new THREE.Mesh(new THREE.BoxGeometry(len,w,w),mat(i));mesh.position.copy(A.clone().add(B).multiplyScalar(.5));mesh.quaternion.setFromUnitVectors(X,B.clone().sub(A).normalize());mesh.userData.i=i;group.add(mesh)};
+ for(const e of ex){if(e.t==='bar')bar(e.a,e.b,e.w,e.i);
+  else if(e.t==='ball'){const m=new THREE.Mesh(new THREE.SphereGeometry(e.r,16,12),mat(e.i));m.position.set(...e.c);m.userData.i=e.i;group.add(m)}
+  else{const U=new THREE.Vector3(...e.U).normalize(),Vv=new THREE.Vector3(...e.V).normalize(),N=U.clone().cross(Vv).normalize();
+   const m=e.t==='ring'?new THREE.Mesh(new THREE.TorusGeometry(e.r,Math.max(.4,e.r/5),8,24),mat(e.i)):new THREE.Mesh(new THREE.BoxGeometry(e.w,e.h,e.e),mat(e.i,e.ghost));
+   if(e.t==='ring')m.quaternion.setFromUnitVectors(Z,N);else m.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(U,Vv,N));
+   m.position.set(...e.c);m.userData.i=e.i;group.add(m)}}
+ for(const m of ms){const w=Math.max(P[m.p].w,.8),g=new THREE.BoxGeometry(m.len,w,w),mesh=new THREE.Mesh(g,new THREE.MeshLambertMaterial({color:m.i===sel3?acc:st}));
+  const a=new THREE.Vector3(...m.a),b=new THREE.Vector3(...m.b),d=b.clone().sub(a).normalize();mesh.position.copy(a.clone().add(b).multiplyScalar(.5));mesh.quaternion.setFromUnitVectors(X,d);mesh.userData.i=m.i;group.add(mesh)}
+ for(const x of sh){const e=SH[x.p].e/10,dims={x:0,y:0,z:0};dims[x.pl.u]=x.w;dims[x.pl.v]=x.h;dims[x.pl.n]=Math.max(e,.6);
+  const mesh=new THREE.Mesh(new THREE.BoxGeometry(dims.x,dims.y,dims.z),new THREE.MeshLambertMaterial({color:x.i===sel3?acc:st,transparent:true,opacity:.75}));
+  const c={x:0,y:0,z:0};c[x.pl.u]=x.w/2;c[x.pl.v]=x.h/2;c[x.pl.n]=x.at;mesh.position.set(c.x,c.y,c.z);mesh.userData.i=x.i;group.add(mesh)}
+ const gs=Math.max(M.W,M.D)*2,grid=new THREE.GridHelper(gs,Math.round(gs/10),css('--grid'),css('--grid'));grid.position.set(M.W/2,-.5,M.D/2);grid.userData.i=null;group.add(grid);
+ renderer&&renderer.setClearColor(hex('--panel'));scene.add(group);$('v3dim').textContent=$('minidim').textContent=`${M.W} × ${M.H} × ${M.D} cm`}
+function size3(){if(!renderer)return;const box=c3.parentElement,w=box.clientWidth,h=box.clientHeight;if(w&&h&&(c3.width!==w||c3.height!==h))renderer.setSize(w,h,false)}
+function draw3(){if(!renderer)return;size3();const w=c3.width,h=c3.height;if(!w||!h)return;renderer.setScissorTest(true);
+ const c=center(),mini=c3.parentElement===$('mini3'),mw=mini?w:Math.floor(w*.68);
+ cam.aspect=mw/h;cam.updateProjectionMatrix();cam.position.set(c.x+orbit.r*Math.sin(orbit.ph)*Math.sin(orbit.th),c.y+orbit.r*Math.cos(orbit.ph),c.z+orbit.r*Math.sin(orbit.ph)*Math.cos(orbit.th));cam.lookAt(c);
+ renderer.setViewport(0,0,mw,h);renderer.setScissor(0,0,mw,h);renderer.render(scene,cam);if(mini)return;
+ const s=Math.max(M.W,M.H,M.D)*1.25,vw=w-mw,vh=Math.floor(h/3),big=2000;
+ const pos=[[c.x,c.y,c.z+big,0,1,0],[c.x+big,c.y,c.z,0,1,0],[c.x,c.y+big,c.z,0,0,-1]];
+ ortho.forEach((o,k)=>{const [x,y,z,ux,uy,uz]=pos[k],asp=vw/vh;o.left=-s/2*asp;o.right=s/2*asp;o.top=s/2;o.bottom=-s/2;o.up.set(ux,uy,uz);o.position.set(x,y,z);o.lookAt(c);o.updateProjectionMatrix();
+  const y0=h-vh*(k+1);renderer.setViewport(mw,y0,vw,vh);renderer.setScissor(mw,y0,vw,vh);renderer.render(scene,o)})}
+(function loop(){draw3();requestAnimationFrame(loop)})();
+// órbita mínima. ponytail: sin OrbitControls; si hace falta pan o inercia, cargar examples/js/controls/OrbitControls.js
+let d3=null;
+function pick(e){const r=c3.getBoundingClientRect(),mw=mainW(),px=e.clientX-r.left,py=e.clientY-r.top;if(px>mw)return null;
+ mouse.set((px/mw)*2-1,-(py/c3.height)*2+1);ray.setFromCamera(mouse,cam);return ray.intersectObjects(group.children).find(h=>h.object.userData.i!==null)||null}
+// Eje sobre el que se mueve una parte: la normal de su cara (at), o el eje transversal dentro de la cara para un travesaño (off).
+function dragAxis(q){const pl=PLANES[q.plane],ax=q.type==='bar'?(q.dir==='u'?pl.v:pl.u):pl.n,v=new THREE.Vector3();v[ax]=1;return {v,key:q.type==='bar'?'off':'at',max:M[AXS[ax]]}}
+function mainW(){return c3.parentElement===$('mini3')?c3.width:Math.floor(c3.width*.68)}
+function toPx(p){const n=p.clone().project(cam),mw=mainW();return [(n.x+1)/2*mw,(1-n.y)/2*c3.height]}
+c3.addEventListener('pointerdown',e=>{c3.setPointerCapture(e.pointerId);d3={x:e.clientX,y:e.clientY,moved:0,part:null};const hit=pick(e);
+ if(hit&&hit.object.userData.i<=-2){const i=hit.object.userData.i;if(sel3!==i){sel3=i;buildScene();renderPlist()}}
+ if(hit&&hit.object.userData.i>=0){const i=hit.object.userData.i,q=M.parts[i],ax=dragAxis(q),p0=hit.point.clone(),a=toPx(p0),b=toPx(p0.clone().add(ax.v.clone().multiplyScalar(10)));
+  const sx=(b[0]-a[0])/10,sy=(b[1]-a[1])/10,n2=sx*sx+sy*sy;d3.part={i,q,ax,sx,sy,n2,start:q[ax.key],x0:e.clientX,y0:e.clientY};if(sel3!==i){sel3=i;buildScene();renderPlist()}}});
+c3.addEventListener('pointermove',e=>{if(!d3){const h=pick(e);c3.style.cursor=h&&h.object.userData.i>=0?'grab':(h&&h.object.userData.i<=-2?'pointer':'default');return}
+ const dx=e.clientX-d3.x,dy=e.clientY-d3.y;if(Math.abs(dx)+Math.abs(dy)>3)d3.moved=1;
+ if(d3.part){const p=d3.part;if(p.n2<1e-6)return;const d=((e.clientX-p.x0)*p.sx+(e.clientY-p.y0)*p.sy)/p.n2,st=S.snap3||1;
+  const v=Math.min(p.ax.max,Math.max(0,Math.round((p.start+d)/st)*st));if(v!==p.q[p.ax.key]){p.q[p.ax.key]=v;buildScene();c3.style.cursor='grabbing'}return}
+ orbit.th-=dx*.01;orbit.ph=Math.min(Math.PI-.15,Math.max(.15,orbit.ph-dy*.01));d3.x=e.clientX;d3.y=e.clientY});
+c3.addEventListener('pointerup',e=>{if(!d3)return;const {moved,part}=d3;d3=null;c3.style.cursor='default';
+ if(part){if(moved)update3();return}
+ if(moved)return;const hit=pick(e);sel3=hit?hit.object.userData.i:null;buildScene();renderPlist()});
+let hist3=[];
+function pushHist(){const j=JSON.stringify(M);if(hist3[hist3.length-1]!==j){hist3.push(j);if(hist3.length>60)hist3.shift()}}
+function undo3(){if(hist3.length<2)return;hist3.pop();M=JSON.parse(hist3[hist3.length-1]);sel3=null;renderForm();buildScene();renderPlist();renderBom();saveM()}
+$('undo3').addEventListener('click',undo3);
+function del3(){if(sel3===null||sel3<0)return;M.parts.splice(sel3,1);sel3=null;update3()}
+$('del3').addEventListener('click',del3);
+document.addEventListener('keydown',e=>{if(S.mode!=='3d'||/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName))return;
+ if((e.ctrlKey||e.metaKey)&&e.key==='z'){e.preventDefault();undo3();return}
+ if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();del3();return}
+ if(sel3===null||sel3<0||!/^Arrow/.test(e.key))return;e.preventDefault();const q=M.parts[sel3],ax=dragAxis(q),st=(S.snap3||1)*(e.shiftKey?10:1),dir=(e.key==='ArrowUp'||e.key==='ArrowRight')?1:-1;
+ q[ax.key]=Math.min(ax.max,Math.max(0,q[ax.key]+dir*st));update3()});
+c3.addEventListener('dblclick',e=>{const h=pick(e);if(h&&h.object.userData.i<=-2){const k=-2-h.object.userData.i;setMode('2d');if(cur!==k)switchView(k)}});
+c3.addEventListener('wheel',e=>{e.preventDefault();orbit.r=Math.min(3000,Math.max(40,orbit.r*Math.pow(1.001,e.deltaY)))},{passive:false});
+
+// formulario
+$('mP').innerHTML=PROFILES.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+function renderForm(){$('mW').value=M.W;$('mH').value=M.H;$('mD').value=M.D;$('mP').value=M.p;$('eTop').checked=M.edges.top;$('eBot').checked=M.edges.bot;$('eVert').checked=M.edges.vert}
+function readForm(){M.W=Math.max(5,+$('mW').value||M.W);M.H=Math.max(5,+$('mH').value||M.H);M.D=Math.max(5,+$('mD').value||M.D);M.p=$('mP').value;M.edges={top:$('eTop').checked,bot:$('eBot').checked,vert:$('eVert').checked};
+ M.parts.forEach(q=>{const mx=M[AXS[PLANES[q.plane].n]];q.at=Math.min(mx,Math.max(0,q.at))});frameCam();update3()}
+['mW','mH','mD','mP','eTop','eBot','eVert'].forEach(id=>$(id).addEventListener('change',readForm));
+function update3(){buildScene();renderPlist();renderBom();saveM();pushHist();if(S.mode==='2d'){guide();ghosts();renderTabs()}}
+const TYPES={bars:'Grilla / barrotes',bar:'Travesaño',frame:'Marco / estante',sheet:'Chapa'};
+function renderPlist(){const L=$('plist');
+ L.innerHTML=M.parts.length?M.parts.map((q,i)=>{const pl=PLANES[q.plane],U=AXS[pl.u],V=AXS[pl.v];
+  const prof=q.type==='sheet'?`<select data-k="sheet">${SHEETS.map(x=>`<option value="${x.id}"${x.id===q.sheet?' selected':''}>${x.name}</option>`).join('')}</select>`:`<select data-k="p">${PROFILES.map(p=>`<option value="${p.id}"${p.id===q.p?' selected':''}>${p.name}</option>`).join('')}</select>`;
+  const dir=(q.type==='bars'||q.type==='bar')?`<select data-k="dir"><option value="u"${q.dir==='u'?' selected':''}>a lo ${U==='W'?'ancho':U==='H'?'alto':'profundo'}</option><option value="v"${q.dir==='v'?' selected':''}>a lo ${V==='W'?'ancho':V==='H'?'alto':'profundo'}</option></select>`:'';
+  const extra=q.type==='bars'?`<input data-k="sp" type="number" value="${q.sp}" title="paso cm"><span class="muted">cm de paso</span>`:q.type==='bar'?`<input data-k="off" type="number" value="${q.off}" title="posición cm"><span class="muted">cm desde el borde</span>`:'';
+  return `<div class="part${i===sel3?' on':''}" data-i="${i}"><b style="font-family:var(--font-d)">${TYPES[q.type]}</b><button class="x" data-del="${i}" title="Quitar">×</button>
+   <span class="lab">cara y posición</span><select data-k="plane">${Object.entries(PLANES).map(([k,v])=>`<option value="${k}"${k===q.plane?' selected':''}>${v.name}</option>`).join('')}</select><input data-k="at" type="number" value="${q.at}" title="posición sobre la normal, cm"><span class="muted">cm</span>
+   <span class="lab">material</span>${prof}${dir}${extra}</div>`}).join(''):'<div class="muted">Sin partes todavía. Agregá una grilla, un travesaño, un estante o chapa.</div>';
+ L.querySelectorAll('.part').forEach(row=>{const i=+row.dataset.i;row.addEventListener('click',e=>{if(e.target.tagName==='BUTTON')return;if(sel3!==i){sel3=i;buildScene();L.querySelectorAll('.part').forEach(r=>r.classList.toggle('on',+r.dataset.i===i))}});
+  row.querySelectorAll('[data-k]').forEach(inp=>inp.addEventListener('change',()=>{const q=M.parts[i],k=inp.dataset.k,v=inp.type==='number'?+inp.value:inp.value;
+   if(k==='plane'){q.plane=v;q.at=M[AXS[PLANES[v].n]];if(v==='xz')q.at=M.H}else if(k==='at'){q.at=Math.min(M[AXS[PLANES[q.plane].n]],Math.max(0,v))}else if(k==='sp'){q.sp=Math.max(.5,v)}else if(k==='off'){q.off=Math.max(0,v)}else q[k]=v;update3()}))});
+ L.querySelectorAll('[data-del]').forEach(b=>b.addEventListener('click',()=>{M.parts.splice(+b.dataset.del,1);sel3=null;update3()}));
+ $('facelist').innerHTML='<span class="lab muted">Caras dibujadas en 2D</span>'+FACES.map((f,k)=>{const n=viewObjs(f.id).filter(o=>!o.ref).length;return `<button data-face="${k}" class="${sel3===-2-k?'on':''}" style="font-size:12px;padding:4px 8px">${f.name}: ${n?n+' partes':'vacía'} · editar</button>`}).join('');
+ $('facelist').querySelectorAll('[data-face]').forEach(b=>b.addEventListener('click',()=>{const k=+b.dataset.face;setMode('2d');if(cur!==k)switchView(k)}))}
+function addPart(type){const q={type,plane:'xz',at:M.H,p:$('curProfile').value,sheet:'ch2',dir:'u',sp:3,off:Math.round(M.H/2)};
+ if(type==='bar'){q.plane='xy';q.at=0;q.off=Math.round(M.H*2/3)}if(type==='sheet'||type==='frame'){q.at=Math.round(M.H*2/3)}
+ M.parts.push(q);sel3=M.parts.length-1;update3()}
+document.querySelectorAll('[data-padd]').forEach(b=>b.addEventListener('click',()=>addPart(b.dataset.padd)));
+const PRESETS={
+ parrilla:{W:80,H:90,D:50,p:'an25',edges:{top:true,bot:false,vert:true},parts:[{type:'bars',plane:'xz',at:90,p:'re10',dir:'v',sp:3},{type:'frame',plane:'xz',at:60,p:'an25'},{type:'sheet',plane:'xz',at:60,sheet:'ch2'},{type:'bar',plane:'xy',at:0,p:'an25',dir:'u',off:30},{type:'bar',plane:'xy',at:50,p:'an25',dir:'u',off:30}]},
+ mesa:{W:120,H:75,D:60,p:'tu30',edges:{top:true,bot:false,vert:true},parts:[{type:'sheet',plane:'xz',at:75,sheet:'ch2'},{type:'frame',plane:'xz',at:15,p:'tu20'}]},
+ estante:{W:90,H:180,D:40,p:'an25',edges:{top:true,bot:true,vert:true},parts:[{type:'frame',plane:'xz',at:45,p:'an25'},{type:'frame',plane:'xz',at:90,p:'an25'},{type:'frame',plane:'xz',at:135,p:'an25'},{type:'sheet',plane:'xz',at:45,sheet:'ch16'},{type:'sheet',plane:'xz',at:90,sheet:'ch16'},{type:'sheet',plane:'xz',at:135,sheet:'ch16'},{type:'sheet',plane:'xz',at:180,sheet:'ch16'},{type:'bars',plane:'xy',at:40,p:'pl12',dir:'v',sp:30}]}};
+document.querySelectorAll('[data-preset]').forEach(b=>b.addEventListener('click',()=>{M=JSON.parse(JSON.stringify(PRESETS[b.dataset.preset]));sel3=null;views.forEach(v=>v.json=null);loading=true;canvas.clear();loading=false;undo=[];persist();frameCam();renderForm();update3()}));
+function setMode(m){S.mode=m;saveCfg();$('mode2d').classList.toggle('on',m==='2d');$('mode3d').classList.toggle('on',m==='3d');
+ $('parts2d').hidden=$('stage2d').hidden=m!=='2d';$('parts3d').hidden=$('stage3d').hidden=m!=='3d';$('props').hidden=m!=='2d';
+ if(m==='2d'){$('mini3').prepend(c3);fit();grid();guide();ghosts();renderTabs();fitView();size3()}else{$('wrap3').prepend(c3);if(!loading)views[cur].json=snapshot();size3();buildScene();renderPlist()}renderBom()}
+$('mode2d').addEventListener('click',()=>setMode('2d'));$('mode3d').addEventListener('click',()=>setMode('3d'));
+window.addEventListener('resize',size3);
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change',buildScene);
+let hasM=false;try{hasM=!!localStorage.getItem('herreria.m3d')}catch(e){}
+if(!M.parts.length&&!hasM)M=JSON.parse(JSON.stringify(PRESETS.parrilla));
+renderForm();frameCam();buildScene();renderPlist();pushHist();
+
+// ---- imagen para el cliente ----
+$('btnShot').addEventListener('click',()=>{let url;if(S.mode==='3d'){if(!renderer)return;const w=c3.width,h=c3.height,c=center();renderer.setScissorTest(false);renderer.setViewport(0,0,w,h);cam.aspect=w/h;cam.updateProjectionMatrix();cam.lookAt(c);renderer.render(scene,cam);url=c3.toDataURL('image/png')}else{canvas.discardActiveObject();canvas.requestRenderAll();url=canvas.toDataURL({format:'png',multiplier:2})}
+ $('shotImg').src=url;$('shot').hidden=false});
+$('shotClose').addEventListener('click',()=>{$('shot').hidden=true});
+$('shotCopy').addEventListener('click',async()=>{try{const blob=await (await fetch($('shotImg').src)).blob();await navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);$('shotCopy').textContent='Copiada'}catch(e){$('shotCopy').textContent='No se pudo copiar: guardala desde la imagen'}setTimeout(()=>$('shotCopy').textContent='Copiar imagen',2500)});
+
+// ---- arranque ----
+theme();fit();renderPrices();
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change',theme);
+let saved=null;try{saved=JSON.parse(localStorage.getItem('herreria.faces'))}catch(e){}
+if(saved&&saved.views){views.forEach(v=>{const o=saved.views.find(x=>x.id===v.id);if(o)v.json=o.json});cur=Math.min(saved.cur||0,views.length-1);load(views[cur].json).then(()=>{undo=[views[cur].json||snapshot()];renderTabs();fitView()})}else if(!hasM)sample();else{load(null).then(()=>{renderTabs();fitView()})}
+renderProps();setMode(S.mode||'2d');
+</script>
