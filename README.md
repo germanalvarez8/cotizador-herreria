@@ -20,7 +20,9 @@ Un solo archivo HTML. Sin build, sin backend. Se abre en el navegador y guarda e
 
 ## Usar
 
-Abrí `index.html` en el navegador. Para publicarlo, cualquier hosting estático sirve (GitHub Pages incluido).
+En línea: **https://germanalvarez8.github.io/cotizador-herreria/**
+
+O abrí `index.html` en el navegador. Es un archivo estático: cualquier hosting sirve.
 
 Los precios de perfiles, chapa y catálogo son de ejemplo y se editan en la misma página. La lista de perfiles vive en el código, en el bloque `calc-begin`.
 
