@@ -56,6 +56,12 @@ main{display:grid;grid-template-columns:180px minmax(0,1fr) 370px;gap:12px;paddi
 .parts .box3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px}
 .parts .box3 input{width:100%;padding:4px}
 .parts .chk{flex-direction:row;align-items:center;gap:6px}
+.gal{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px}
+.card{border:1px solid var(--line);border-radius:4px;padding:0;background:var(--panel);text-align:left;cursor:pointer;overflow:hidden}
+.card:hover{border-color:var(--accent)}
+.card img{width:100%;aspect-ratio:1.6;display:block;background:var(--bg);object-fit:cover}
+.card b{display:block;padding:6px 8px 0;font-family:var(--font-d);font-size:15px}
+.card span{display:block;padding:2px 8px 8px;font-size:12px;color:var(--muted)}
 .viewbar .sp{flex:1}
 .panel{display:flex;flex-direction:column;gap:12px;min-width:0;overflow:auto}
 .box{background:var(--panel);border:1px solid var(--line);border-radius:4px;padding:10px;display:flex;flex-direction:column;gap:8px;min-width:0}
@@ -103,8 +109,14 @@ th{font-family:var(--font-d);font-weight:600;letter-spacing:.04em;text-transform
   <h1>Cotizador de Herrería</h1>
   <span class="modes"><button id="mode2d">Dibujar caras · 2D</button><button id="mode3d">Caja y partes · 3D</button></span>
   <span class="sp"></span>
+  <button id="btnGal" class="primary">Modelos base</button>
   <button id="btnShot">Imagen para el cliente</button>
 </header>
+<div id="gal" hidden style="position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:16px">
+  <div class="box" style="max-width:min(1040px,96vw);max-height:92vh;overflow:auto;width:100%"><div class="row" style="justify-content:space-between"><h2>Modelos base</h2><button id="galClose">Cerrar</button></div>
+  <div class="muted">Elegí uno y retocalo: medidas de la caja, partes interiores y caras dibujadas. Reemplaza lo que tenés en el plano.</div>
+  <div class="gal" id="galGrid"></div></div>
+</div>
 <div id="shot" hidden style="position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:16px">
   <div class="box" style="max-width:min(900px,96vw);max-height:92vh;overflow:auto"><h2>Imagen para el cliente</h2><img id="shotImg" alt="Vista de la pieza" style="max-width:100%;border:1px solid var(--line)"><div class="muted">En el celular, mantené apretada la imagen para guardarla o compartirla por WhatsApp.</div><div class="row"><button id="shotCopy" class="primary">Copiar imagen</button><button id="shotClose">Cerrar</button></div></div>
 </div>
@@ -112,7 +124,7 @@ th{font-family:var(--font-d);font-weight:600;letter-spacing:.04em;text-transform
 <main>
   <aside class="parts" id="parts2d">
     <h2>Empezar</h2>
-    <button id="btnSample">Reja de ejemplo</button>
+    <button data-gal>Modelos base</button>
     <button id="btnClear">Vaciar esta cara</button>
     <h2>Perfil para lo nuevo</h2>
     <label><select id="curProfile"></select></label>
@@ -146,10 +158,8 @@ th{font-family:var(--font-d);font-weight:600;letter-spacing:.04em;text-transform
   </section>
 
   <aside class="parts" id="parts3d" hidden>
-    <h2>Empezar de una plantilla</h2>
-    <button data-preset="parrilla">Parrilla</button>
-    <button data-preset="mesa">Mesa</button>
-    <button data-preset="estante">Estantería</button>
+    <h2>Empezar</h2>
+    <button data-gal>Modelos base</button>
     <h2>Caja base</h2>
     <div class="box3"><input id="mW" type="number" title="Ancho cm"><input id="mH" type="number" title="Alto cm"><input id="mD" type="number" title="Profundidad cm"></div>
     <span class="muted">ancho · alto · profundidad (cm)</span>
@@ -316,7 +326,7 @@ function grid(){const v=canvas.viewportTransform,s=S.snap*PX*v[0];$('wrap').styl
 function snapPx(){return S.snap*PX}
 
 // ---- fábrica de partes (medidas en cm) ----
-function mk(kind,opt={}){const st=css('--steel'),p=opt.p||$('curProfile').value,w=Math.max(P[p].w*PX,2),[FW,FH]=FACES[cur].dims();let o;
+function mk(kind,opt={}){const st=css('--steel'),p=opt.p||$('curProfile').value,w=Math.max((P[p]||P.cu12).w*PX,2),[FW,FH]=FACES[cur].dims();let o;
  if(kind==='seg')o=new fabric.Rect({kind,p,width:(opt.len||FW)*PX,height:w,fill:st,strokeWidth:0,lockScalingY:true});
  if(kind==='frame')o=new fabric.Rect({kind,p,width:(opt.w||FW)*PX,height:(opt.h||FH)*PX,fill:'transparent',stroke:st,strokeWidth:w,strokeUniform:true,perPixelTargetFind:true});
  if(kind==='bars')o=mkBars({p,bw:(opt.w||FW)*PX,bh:(opt.h||FH)*PX,sp:opt.sp||12,dir:opt.dir||'v'});
@@ -514,15 +524,6 @@ $('btnCopy').addEventListener('click',async()=>{const t=summary();try{await navi
 
 // ---- ejemplo ----
 async function resetViews(){views.forEach(v=>v.json=null);cur=0;undo=[];await load(null);renderTabs()}
-async function sample(){M={W:150,H:120,D:3,p:'tu30',edges:{top:false,bot:false,vert:false},parts:[]};renderForm();frameCam();await resetViews();loading=true;
- add('frame',{p:'tu30',w:150,h:120},{x:0,y:0});
- add('bars',{p:'cu12',w:150,h:120,sp:12},{x:0,y:0});
- add('seg',{p:'pl25',len:150},{x:0,y:30});
- add('vol',{p:'pl12',r1:10},{x:15,y:5});add('vol',{p:'pl12',r1:10},{x:115,y:5});
- add('arc',{p:'pl12',r:14},{x:61,y:3});
- ['lanza','lanza','lanza'].forEach((c,i)=>add('cat',{catId:c},{x:34+i*35,y:-12}));
- loading=false;after();fitView()}
-$('btnSample').addEventListener('click',sample);
 $('btnClear').addEventListener('click',()=>{real().forEach(o=>canvas.remove(o));canvas.discardActiveObject();after();fitView()});
 
 
@@ -673,9 +674,10 @@ function buildScene(){scene.remove(group);group=new THREE.Group();const st=hex('
  const gs=Math.max(M.W,M.D)*2,grid=new THREE.GridHelper(gs,Math.round(gs/10),css('--grid'),css('--grid'));grid.position.set(M.W/2,-.5,M.D/2);grid.userData.i=null;group.add(grid);
  renderer&&renderer.setClearColor(hex('--panel'));scene.add(group);$('v3dim').textContent=$('minidim').textContent=`${M.W} × ${M.H} × ${M.D} cm`}
 function size3(){if(!renderer)return;const box=c3.parentElement,w=box.clientWidth,h=box.clientHeight;if(w&&h&&(c3.width!==w||c3.height!==h))renderer.setSize(w,h,false)}
+function placeCam(aspect){const c=center();cam.aspect=aspect;cam.updateProjectionMatrix();cam.position.set(c.x+orbit.r*Math.sin(orbit.ph)*Math.sin(orbit.th),c.y+orbit.r*Math.cos(orbit.ph),c.z+orbit.r*Math.sin(orbit.ph)*Math.cos(orbit.th));cam.lookAt(c)}
 function draw3(){if(!renderer)return;size3();const w=c3.width,h=c3.height;if(!w||!h)return;renderer.setScissorTest(true);
  const c=center(),mini=c3.parentElement===$('mini3'),mw=mini?w:Math.floor(w*.68);
- cam.aspect=mw/h;cam.updateProjectionMatrix();cam.position.set(c.x+orbit.r*Math.sin(orbit.ph)*Math.sin(orbit.th),c.y+orbit.r*Math.cos(orbit.ph),c.z+orbit.r*Math.sin(orbit.ph)*Math.cos(orbit.th));cam.lookAt(c);
+ placeCam(mw/h);
  renderer.setViewport(0,0,mw,h);renderer.setScissor(0,0,mw,h);renderer.render(scene,cam);if(mini)return;
  const s=Math.max(M.W,M.H,M.D)*1.25,vw=w-mw,vh=Math.floor(h/3),big=2000;
  const pos=[[c.x,c.y,c.z+big,0,1,0],[c.x+big,c.y,c.z,0,1,0],[c.x,c.y+big,c.z,0,0,-1]];
@@ -742,11 +744,45 @@ function addPart(type){const q={type,plane:'xz',at:M.H,p:$('curProfile').value,s
  if(type==='bar'){q.plane='xy';q.at=0;q.off=Math.round(M.H*2/3)}if(type==='sheet'||type==='frame'){q.at=Math.round(M.H*2/3)}
  M.parts.push(q);sel3=M.parts.length-1;update3()}
 document.querySelectorAll('[data-padd]').forEach(b=>b.addEventListener('click',()=>addPart(b.dataset.padd)));
-const PRESETS={
- parrilla:{W:80,H:90,D:50,p:'an25',edges:{top:true,bot:false,vert:true},parts:[{type:'bars',plane:'xz',at:90,p:'re10',dir:'v',sp:3},{type:'frame',plane:'xz',at:60,p:'an25'},{type:'sheet',plane:'xz',at:60,sheet:'ch2'},{type:'bar',plane:'xy',at:0,p:'an25',dir:'u',off:30},{type:'bar',plane:'xy',at:50,p:'an25',dir:'u',off:30}]},
- mesa:{W:120,H:75,D:60,p:'tu30',edges:{top:true,bot:false,vert:true},parts:[{type:'sheet',plane:'xz',at:75,sheet:'ch2'},{type:'frame',plane:'xz',at:15,p:'tu20'}]},
- estante:{W:90,H:180,D:40,p:'an25',edges:{top:true,bot:true,vert:true},parts:[{type:'frame',plane:'xz',at:45,p:'an25'},{type:'frame',plane:'xz',at:90,p:'an25'},{type:'frame',plane:'xz',at:135,p:'an25'},{type:'sheet',plane:'xz',at:45,sheet:'ch16'},{type:'sheet',plane:'xz',at:90,sheet:'ch16'},{type:'sheet',plane:'xz',at:135,sheet:'ch16'},{type:'sheet',plane:'xz',at:180,sheet:'ch16'},{type:'bars',plane:'xy',at:40,p:'pl12',dir:'v',sp:30}]}};
-document.querySelectorAll('[data-preset]').forEach(b=>b.addEventListener('click',()=>{M=JSON.parse(JSON.stringify(PRESETS[b.dataset.preset]));sel3=null;views.forEach(v=>v.json=null);loading=true;canvas.clear();loading=false;undo=[];persist();frameCam();renderForm();update3()}));
+// ===== Modelos base: caja + partes interiores + caras dibujadas. Se eligen de la galería y se retocan. =====
+const F=(k,o,x=0,y=0,more={})=>({k,o,x,y,...more});
+const TPL=[
+ {id:'reja',name:'Reja simple',desc:'Marco de tubo 30, barrotes cuadrado 12 cada 12 cm',M:{W:150,H:120,D:3,p:'tu30',edges:{top:false,bot:false,vert:false},parts:[]},
+  faces:{frente:[F('frame',{p:'tu30',w:150,h:120}),F('bars',{p:'cu12',w:150,h:120,sp:12})]}},
+ {id:'reja2',name:'Reja con volutas',desc:'Travesaño, volutas y arco de planchuela, puntas de lanza',M:{W:150,H:120,D:3,p:'tu30',edges:{top:false,bot:false,vert:false},parts:[]},
+  faces:{frente:[F('frame',{p:'tu30',w:150,h:120}),F('bars',{p:'cu12',w:150,h:120,sp:12}),F('seg',{p:'pl25',len:150},0,30),F('vol',{p:'pl12',r1:10},15,5),F('vol',{p:'pl12',r1:10},115,5),F('arc',{p:'pl12',r:14},61,3),F('cat',{catId:'lanza'},34,-12),F('cat',{catId:'lanza'},69,-12),F('cat',{catId:'lanza'},104,-12)]}},
+ {id:'porton',name:'Portón de dos hojas',desc:'Dos marcos de tubo 40x20 con barrotes y travesaño',M:{W:300,H:200,D:4,p:'tu4020',edges:{top:false,bot:false,vert:false},parts:[]},
+  faces:{frente:[F('frame',{p:'tu4020',w:150,h:200}),F('frame',{p:'tu4020',w:150,h:200},150,0),F('bars',{p:'cu12',w:150,h:200,sp:12}),F('bars',{p:'cu12',w:150,h:200,sp:12},150,0),F('seg',{p:'tu4020',len:150},0,100),F('seg',{p:'tu4020',len:150},150,100)]}},
+ {id:'puerta',name:'Puerta reja',desc:'Marco 40x20, barrotes arriba y chapa abajo',M:{W:90,H:200,D:4,p:'tu4020',edges:{top:false,bot:false,vert:false},parts:[]},
+  faces:{frente:[F('frame',{p:'tu4020',w:90,h:200}),F('bars',{p:'cu12',w:90,h:120,sp:11}),F('seg',{p:'tu4020',len:90},0,120),F('sheet',{p:'ch16',w:90,h:80},0,120)]}},
+ {id:'baranda',name:'Baranda de balcón',desc:'Pasamanos 40x20, barrotes cuadrado 12, travesaño bajo',M:{W:200,H:100,D:4,p:'tu4020',edges:{top:false,bot:false,vert:false},parts:[]},
+  faces:{frente:[F('seg',{p:'tu4020',len:200},0,0),F('bars',{p:'cu12',w:200,h:92,sp:12}),F('seg',{p:'pl25',len:200},0,92),F('seg',{p:'cu12',len:100,angle:90},0,0),F('seg',{p:'cu12',len:100,angle:90},200,0)]}},
+ {id:'mesa',name:'Mesa',desc:'Tubo 30, tapa de chapa 2 mm, estante bajo',M:{W:120,H:75,D:60,p:'tu30',edges:{top:true,bot:false,vert:true},parts:[{type:'sheet',plane:'xz',at:75,sheet:'ch2'},{type:'frame',plane:'xz',at:15,p:'tu20'}]}},
+ {id:'ratona',name:'Mesa ratona',desc:'Tubo 20, tapa de chapa',M:{W:90,H:45,D:50,p:'tu20',edges:{top:true,bot:false,vert:true},parts:[{type:'sheet',plane:'xz',at:45,sheet:'ch2'}]}},
+ {id:'banco',name:'Banqueta',desc:'Tubo 20, asiento de chapa, refuerzo bajo',M:{W:40,H:45,D:40,p:'tu20',edges:{top:true,bot:false,vert:true},parts:[{type:'sheet',plane:'xz',at:45,sheet:'ch2'},{type:'frame',plane:'xz',at:15,p:'tu20'}]}},
+ {id:'rack',name:'Mueble bajo / rack',desc:'Tubo 20, tres estantes de chapa, fondo cerrado',M:{W:120,H:50,D:40,p:'tu20',edges:{top:true,bot:true,vert:true},parts:[{type:'frame',plane:'xz',at:25,p:'tu20'},{type:'sheet',plane:'xz',at:50,sheet:'ch16'},{type:'sheet',plane:'xz',at:25,sheet:'ch16'},{type:'sheet',plane:'xz',at:0,sheet:'ch16'}]},
+  faces:{fondo:[F('sheet',{p:'ch16',w:120,h:50})]}},
+ {id:'estante',name:'Estantería',desc:'Ángulo 1", cuatro niveles de chapa, cruz atrás',M:{W:90,H:180,D:40,p:'an25',edges:{top:true,bot:true,vert:true},parts:[{type:'frame',plane:'xz',at:45,p:'an25'},{type:'frame',plane:'xz',at:90,p:'an25'},{type:'frame',plane:'xz',at:135,p:'an25'},{type:'sheet',plane:'xz',at:45,sheet:'ch16'},{type:'sheet',plane:'xz',at:90,sheet:'ch16'},{type:'sheet',plane:'xz',at:135,sheet:'ch16'},{type:'sheet',plane:'xz',at:180,sheet:'ch16'},{type:'bars',plane:'xy',at:0,p:'pl12',dir:'v',sp:30}]}},
+ {id:'parrilla',name:'Parrilla',desc:'Ángulo 1", grilla de redondo 10 cada 3 cm, bandeja de chapa',M:{W:80,H:90,D:50,p:'an25',edges:{top:true,bot:false,vert:true},parts:[{type:'bars',plane:'xz',at:90,p:'re10',dir:'v',sp:3},{type:'frame',plane:'xz',at:60,p:'an25'},{type:'sheet',plane:'xz',at:60,sheet:'ch2'},{type:'bar',plane:'xy',at:0,p:'an25',dir:'u',off:30},{type:'bar',plane:'xy',at:50,p:'an25',dir:'u',off:30}]}},
+ {id:'brasero',name:'Brasero / fogonero',desc:'Caja de ángulo con chapa en los cuatro lados y piso',M:{W:50,H:35,D:50,p:'an25',edges:{top:true,bot:false,vert:true},parts:[{type:'sheet',plane:'xz',at:10,sheet:'ch2'}]},
+  faces:{frente:[F('sheet',{p:'ch16',w:50,h:35})],fondo:[F('sheet',{p:'ch16',w:50,h:35})],izq:[F('sheet',{p:'ch16',w:50,h:35})],der:[F('sheet',{p:'ch16',w:50,h:35})]}},
+];
+function faceJson(items){const objs=items.map(it=>{const o=mk(it.k,it.o);o.set({left:it.x*PX,top:it.y*PX});if(it.o.angle)o.set('angle',it.o.angle);if(it.qty)o.qty=it.qty;o.setCoords();return o.toObject(PROPS)});return JSON.stringify({version:fabric.version,objects:objs})}
+async function applyTpl(t){M=JSON.parse(JSON.stringify(t.M));sel3=null;views.forEach(v=>v.json=t.faces&&t.faces[v.id]?faceJson(t.faces[v.id]):null);cur=0;undo=[];persist();renderForm();frameCam();
+ await load(views[0].json);undo=[views[0].json||snapshot()];renderTabs();update3();fitView()}
+let thumbsDone=false;
+function renderGal(){$('galGrid').innerHTML=TPL.map(t=>`<button class="card" data-tpl="${t.id}"><img id="th-${t.id}" alt=""><b>${t.name}</b><span>${t.desc}</span></button>`).join('');
+ $('galGrid').querySelectorAll('[data-tpl]').forEach(b=>b.addEventListener('click',async()=>{$('gal').hidden=true;await applyTpl(TPL.find(t=>t.id===b.dataset.tpl))}))}
+// Miniaturas: se renderiza cada modelo una vez en el mismo canvas 3D y se guarda como imagen.
+function thumbs(){if(thumbsDone||!renderer)return;const w=c3.width,h=c3.height;if(!w||!h)return;thumbsDone=true;
+ const save={M,json:views.map(v=>v.json),cur,sel:sel3,r:orbit.r};loading=true;
+ try{for(const t of TPL){M=JSON.parse(JSON.stringify(t.M));views.forEach(v=>v.json=t.faces&&t.faces[v.id]?faceJson(t.faces[v.id]):null);sel3=null;frameCam();orbit.r*=1.3;buildScene();
+  placeCam(w/h);renderer.setScissorTest(false);renderer.setViewport(0,0,w,h);renderer.render(scene,cam);
+  const oc=document.createElement('canvas');oc.width=320;oc.height=200;const sw=Math.min(w,h*1.6),sh=sw/1.6;oc.getContext('2d').drawImage(c3,(w-sw)/2,(h-sh)/2,sw,sh,0,0,320,200);const im=$('th-'+t.id);if(im)im.src=oc.toDataURL('image/png')}}
+ finally{M=save.M;views.forEach((v,i)=>v.json=save.json[i]);cur=save.cur;sel3=save.sel;orbit.r=save.r;loading=false;buildScene()}}
+function openGal(){$('gal').hidden=false;if(!$('galGrid').children.length)renderGal();thumbs()}
+$('btnGal').addEventListener('click',openGal);document.querySelectorAll('[data-gal]').forEach(b=>b.addEventListener('click',openGal));
+$('galClose').addEventListener('click',()=>{$('gal').hidden=true});
 function setMode(m){S.mode=m;saveCfg();$('mode2d').classList.toggle('on',m==='2d');$('mode3d').classList.toggle('on',m==='3d');
  $('parts2d').hidden=$('stage2d').hidden=m!=='2d';$('parts3d').hidden=$('stage3d').hidden=m!=='3d';$('props').hidden=m!=='2d';
  if(m==='2d'){$('mini3').prepend(c3);fit();grid();guide();ghosts();renderTabs();fitView();size3()}else{$('wrap3').prepend(c3);if(!loading)views[cur].json=snapshot();size3();buildScene();renderPlist()}renderBom()}
@@ -754,7 +790,7 @@ $('mode2d').addEventListener('click',()=>setMode('2d'));$('mode3d').addEventList
 window.addEventListener('resize',size3);
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change',buildScene);
 let hasM=false;try{hasM=!!localStorage.getItem('herreria.m3d')}catch(e){}
-if(!M.parts.length&&!hasM)M=JSON.parse(JSON.stringify(PRESETS.parrilla));
+
 renderForm();frameCam();buildScene();renderPlist();pushHist();
 
 // ---- imagen para el cliente ----
@@ -767,6 +803,6 @@ $('shotCopy').addEventListener('click',async()=>{try{const blob=await (await fet
 theme();fit();renderPrices();
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change',theme);
 let saved=null;try{saved=JSON.parse(localStorage.getItem('herreria.faces'))}catch(e){}
-if(saved&&saved.views){views.forEach(v=>{const o=saved.views.find(x=>x.id===v.id);if(o)v.json=o.json});cur=Math.min(saved.cur||0,views.length-1);load(views[cur].json).then(()=>{undo=[views[cur].json||snapshot()];renderTabs();fitView()})}else if(!hasM)sample();else{load(null).then(()=>{renderTabs();fitView()})}
+if(saved&&saved.views){views.forEach(v=>{const o=saved.views.find(x=>x.id===v.id);if(o)v.json=o.json});cur=Math.min(saved.cur||0,views.length-1);load(views[cur].json).then(()=>{undo=[views[cur].json||snapshot()];renderTabs();fitView()})}else if(!hasM)applyTpl(TPL[1]).then(()=>setTimeout(openGal,400));else{load(null).then(()=>{renderTabs();fitView()})}
 renderProps();setMode(S.mode||'2d');
 </script>
