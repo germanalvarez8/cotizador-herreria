@@ -1,15 +1,24 @@
-// node shoot.js — flujo galería -> modelo -> 2D/3D; capturas en shots/.
+// node shoot.js — flujo galería -> proyectos; capturas en shots/.
 const {chromium}=require('playwright');const path=require('path');
 (async()=>{const b=await chromium.launch();
  const pg=await b.newPage({viewport:{width:1400,height:900}});const errs=[];
  pg.on('console',m=>{if(m.type()==='error'||m.type()==='warning')errs.push(m.type()+': '+m.text())});pg.on('pageerror',e=>errs.push('pageerror: '+e.message));
  await pg.goto('file://'+path.resolve('index.html'));await pg.waitForTimeout(1500);
  await pg.evaluate(()=>{localStorage.clear()});await pg.reload();await pg.waitForTimeout(3500);
- await pg.screenshot({path:'shots/50-galeria.png'});
- const th=await pg.evaluate(()=>[...document.querySelectorAll('.card img')].filter(i=>i.src.startsWith('data:')).length);console.log('miniaturas renderizadas:',th);
- await pg.click('[data-tpl="porton"]');await pg.waitForTimeout(800);await pg.screenshot({path:'shots/51-porton.png'});
- await pg.click('#btnGal');await pg.waitForTimeout(300);await pg.click('[data-tpl="brasero"]');await pg.waitForTimeout(800);
- await pg.click('#mode3d');await pg.waitForTimeout(600);await pg.screenshot({path:'shots/52-brasero-3d.png'});
- await pg.click('#btnGal');await pg.waitForTimeout(300);await pg.click('[data-tpl="baranda"]');await pg.waitForTimeout(800);await pg.screenshot({path:'shots/53-baranda-3d.png'});
- const n=await pg.evaluate(()=>({parts:M.parts.length,box:[M.W,M.H,M.D],bom:document.getElementById('total').textContent,kg:document.getElementById('kg').textContent}));console.log(JSON.stringify(n));
+ await pg.click('#galClose');await pg.fill('#prName','Reja de Juan');await pg.press('#prName','Enter');await pg.waitForTimeout(300);
+ await pg.click('#btnPrj');await pg.waitForTimeout(800);await pg.screenshot({path:'shots/60-proyectos-1.png'});
+ await pg.click('#prNew');await pg.waitForTimeout(800);await pg.click('[data-tpl="mesa"]');await pg.waitForTimeout(800);
+ await pg.fill('#prName','Mesa del quincho');await pg.press('#prName','Enter');await pg.waitForTimeout(300);
+ await pg.click('#btnPrj');await pg.waitForTimeout(1000);
+ const first=await pg.$('[data-dup]');await first.click();await pg.waitForTimeout(800);await pg.screenshot({path:'shots/61-proyectos-3.png'});
+ const st=await pg.evaluate(()=>({n:PR.list.length,names:PR.list.map(p=>p.name),thumbs:PR.list.filter(p=>p.thumb&&p.thumb.startsWith('data:')).length,cur:curPr().name}));console.log(JSON.stringify(st));
+ const opens=await pg.$$('[data-open]');await opens[opens.length-1].click();await pg.waitForTimeout(1000);
+ const cur=await pg.evaluate(()=>({name:curPr().name,box:[M.W,M.H,M.D],total:document.getElementById('total').textContent}));console.log('abierto:',JSON.stringify(cur));
+ await pg.reload();await pg.waitForTimeout(2500);
+ const after=await pg.evaluate(()=>({name:curPr().name,n:PR.list.length,box:[M.W,M.H,M.D]}));console.log('tras recargar:',JSON.stringify(after));
+ await pg.click('#btnPrj');await pg.waitForTimeout(500);const exp=await pg.$('[data-exp]');await exp.click();await pg.waitForTimeout(500);
+ const txt=await pg.evaluate(()=>document.getElementById('prText').value);console.log('export bytes:',txt.length);
+ await pg.click('#prImport');await pg.fill('#prText',txt);await pg.click('#prTextLoad');await pg.waitForTimeout(800);
+ const imp=await pg.evaluate(()=>({n:PR.list.length,msg:document.getElementById('prIOmsg').textContent}));console.log('import:',JSON.stringify(imp));
+ await pg.screenshot({path:'shots/62-import.png'});
  console.log(errs.length?errs.join('\n'):'sin errores de consola');await b.close()})();

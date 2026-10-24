@@ -109,9 +109,19 @@ th{font-family:var(--font-d);font-weight:600;letter-spacing:.04em;text-transform
   <h1>Cotizador de Herrería</h1>
   <span class="modes"><button id="mode2d">Dibujar caras · 2D</button><button id="mode3d">Caja y partes · 3D</button></span>
   <span class="sp"></span>
+  <input id="prName" title="Nombre del proyecto" style="font-family:var(--font-d);font-weight:600;font-size:16px;width:220px" placeholder="Nombre del proyecto">
+  <button id="btnPrj">Proyectos</button>
   <button id="btnGal" class="primary">Modelos base</button>
   <button id="btnShot">Imagen para el cliente</button>
 </header>
+<div id="prj" hidden style="position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:16px">
+  <div class="box" style="max-width:min(1040px,96vw);max-height:92vh;overflow:auto;width:100%">
+    <div class="row" style="justify-content:space-between"><h2>Proyectos</h2><div class="row"><button id="prNew" class="primary">Nuevo proyecto</button><button id="prImport">Importar</button><button id="prClose">Cerrar</button></div></div>
+    <div class="muted">Se guardan solos en este navegador. Para llevarlos a otro aparato o mandarlos, usá Exportar e Importar.</div>
+    <div id="prIO" hidden class="box"><div class="muted" id="prIOmsg"></div><textarea id="prText" style="min-height:70px"></textarea><div class="row"><button id="prTextLoad">Cargar lo pegado</button><button id="prTextCopy">Copiar</button><input type="file" id="prFile" accept=".json,application/json"></div></div>
+    <div class="gal" id="prGrid"></div>
+  </div>
+</div>
 <div id="gal" hidden style="position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:16px">
   <div class="box" style="max-width:min(1040px,96vw);max-height:92vh;overflow:auto;width:100%"><div class="row" style="justify-content:space-between"><h2>Modelos base</h2><button id="galClose">Cerrar</button></div>
   <div class="muted">Elegí uno y retocalo: medidas de la caja, partes interiores y caras dibujadas. Reemplaza lo que tenés en el plano.</div>
@@ -401,7 +411,7 @@ const FACES=[
 ];
 let loading=false,quiet=false,undo=[],views=FACES.map(f=>({id:f.id,name:f.name,json:null})),cur=0;
 function snapshot(){return JSON.stringify(canvas.toJSON(PROPS))}
-function persist(){try{localStorage.setItem('herreria.faces',JSON.stringify({views,cur}))}catch(e){}}
+function persist(){savePr()}
 let tmr;function after(){if(loading||quiet)return;clearTimeout(tmr);tmr=setTimeout(()=>{if(loading)return;const s=snapshot();views[cur].json=s;if(undo[undo.length-1]!==s){undo.push(s);if(undo.length>60)undo.shift()}persist();buildScene();renderBom()},60)}
 function load(json){return new Promise(res=>{loading=true;canvas.clear();const done=()=>{canvas.getObjects().forEach(decorate);guide();loading=false;ghosts();canvas.requestRenderAll();renderBom();renderProps();res()};if(!json)return done();canvas.loadFromJSON(json,done)})}
 function real(){return canvas.getObjects().filter(o=>o.kind!=='guide'&&o.kind!=='ghost')}
@@ -507,7 +517,7 @@ function renderBom(){const r=calc(bomObjects(),S);
  +(r.rows.length+r.catRows.length+r.sheetRows.length?'':'<tr><td colspan="7" class="muted">El plano está vacío. Agregá un marco para empezar.</td></tr>');
  const bi=BOMINFO,src=bi.bySrc.filter(b=>b.n||b.cat||b.m2).map(b=>`<b>${b.src}</b>: ${b.n?b.n+' hierros, '+num(b.m,1)+' m':''}${b.cat?(b.n?' · ':'')+b.cat+' pzas catálogo':''}${b.m2?(b.n||b.cat?' · ':'')+num(b.m2,2)+' m² chapa':''}`).join('<br>');
  $('origen').innerHTML=(src?`<div class="muted" style="margin-top:4px">De dónde sale: <br>${src}</div>`:'')+(bi.dups?`<div class="muted">${bi.dups} hierro${bi.dups>1?'s':''} superpuesto${bi.dups>1?'s':''} (arista de caja y borde dibujado en el mismo lugar) contado${bi.dups>1?'s':''} una sola vez.</div>`:'')+bi.warn.map(w=>`<div class="warn">${w}</div>`).join('');
- $('kg').textContent=num(r.kg)+' kg';$('mat').textContent=fmt(r.mat);$('total').textContent=fmt(r.total)}
+ LAST={kg:r.kg,total:r.total};$('kg').textContent=num(r.kg)+' kg';$('mat').textContent=fmt(r.mat);$('total').textContent=fmt(r.total)}
 function renderPrices(){
  $('prices').innerHTML=`<tr><th>Perfil</th><th>kg/m</th><th>$ / barra</th></tr>`+PROFILES.map(p=>`<tr><td>${p.name}</td><td>${num(p.kgm,3)}</td><td><input data-price="${p.id}" type="number" step="100" value="${S.prices[p.id]??p.price}"></td></tr>`).join('');
  $('sheetprices').innerHTML=`<tr><th>Chapa</th><th>kg/m²</th><th>$ / hoja</th></tr>`+SHEETS.map(x=>`<tr><td>${x.name}</td><td>${num(x.e*7.85,1)}</td><td><input data-sprice="${x.id}" type="number" step="500" value="${S.sheetPrices[x.id]??x.price}"></td></tr>`).join('');
@@ -589,8 +599,7 @@ $('btnEst').addEventListener('click',async()=>{const st=$('estStatus'),key=$('ap
 const PLANES={xz:{name:'Horizontal (estante, tapa, piso)',u:'x',v:'z',n:'y'},xy:{name:'Frente / fondo',u:'x',v:'y',n:'z'},yz:{name:'Lateral izq. / der.',u:'z',v:'y',n:'x'}};
 const AXS={x:'W',y:'H',z:'D'};
 let M={W:80,H:90,D:50,p:'an25',edges:{top:true,bot:false,vert:true},parts:[]},sel3=null;
-try{const m=JSON.parse(localStorage.getItem('herreria.m3d'));if(m&&m.parts)M=m}catch(e){}
-function saveM(){try{localStorage.setItem('herreria.m3d',JSON.stringify(M))}catch(e){}}
+function saveM(){savePr()}
 function p3(pl,u,v,at){const o={};o[pl.u]=u;o[pl.v]=v;o[pl.n]=at;return [o.x,o.y,o.z]}
 // Devuelve hierros {p,a,b,len,i} y chapas {p,w,h,pl,at,i}; i = índice de parte, -1 = caja.
 function members(){const ms=[],sh=[],ex=[],{W,H,D,p,edges:E}=M;
@@ -768,18 +777,21 @@ const TPL=[
   faces:{frente:[F('sheet',{p:'ch16',w:50,h:35})],fondo:[F('sheet',{p:'ch16',w:50,h:35})],izq:[F('sheet',{p:'ch16',w:50,h:35})],der:[F('sheet',{p:'ch16',w:50,h:35})]}},
 ];
 function faceJson(items){const objs=items.map(it=>{const o=mk(it.k,it.o);o.set({left:it.x*PX,top:it.y*PX});if(it.o.angle)o.set('angle',it.o.angle);if(it.qty)o.qty=it.qty;o.setCoords();return o.toObject(PROPS)});return JSON.stringify({version:fabric.version,objects:objs})}
-async function applyTpl(t){M=JSON.parse(JSON.stringify(t.M));sel3=null;views.forEach(v=>v.json=t.faces&&t.faces[v.id]?faceJson(t.faces[v.id]):null);cur=0;undo=[];persist();renderForm();frameCam();
+async function applyTpl(t){M=JSON.parse(JSON.stringify(t.M));sel3=null;const fj=tplFaces(t);views.forEach(v=>v.json=fj[v.id]);cur=0;undo=[];persist();renderForm();frameCam();
  await load(views[0].json);undo=[views[0].json||snapshot()];renderTabs();update3();fitView()}
 let thumbsDone=false;
 function renderGal(){$('galGrid').innerHTML=TPL.map(t=>`<button class="card" data-tpl="${t.id}"><img id="th-${t.id}" alt=""><b>${t.name}</b><span>${t.desc}</span></button>`).join('');
  $('galGrid').querySelectorAll('[data-tpl]').forEach(b=>b.addEventListener('click',async()=>{$('gal').hidden=true;await applyTpl(TPL.find(t=>t.id===b.dataset.tpl))}))}
 // Miniaturas: se renderiza cada modelo una vez en el mismo canvas 3D y se guarda como imagen.
-function thumbs(){if(thumbsDone||!renderer)return;const w=c3.width,h=c3.height;if(!w||!h)return;thumbsDone=true;
+// Renderiza un modelo cualquiera (caja + caras en JSON) a una imagen chica, sin tocar el proyecto abierto.
+function renderThumb(M2,faces2){if(!renderer)return '';const w=c3.width,h=c3.height;if(!w||!h)return '';
  const save={M,json:views.map(v=>v.json),cur,sel:sel3,r:orbit.r};loading=true;
- try{for(const t of TPL){M=JSON.parse(JSON.stringify(t.M));views.forEach(v=>v.json=t.faces&&t.faces[v.id]?faceJson(t.faces[v.id]):null);sel3=null;frameCam();orbit.r*=1.3;buildScene();
+ try{M=JSON.parse(JSON.stringify(M2));views.forEach(v=>v.json=(faces2&&faces2[v.id])||null);sel3=null;frameCam();orbit.r*=1.3;buildScene();
   placeCam(w/h);renderer.setScissorTest(false);renderer.setViewport(0,0,w,h);renderer.render(scene,cam);
-  const oc=document.createElement('canvas');oc.width=320;oc.height=200;const sw=Math.min(w,h*1.6),sh=sw/1.6;oc.getContext('2d').drawImage(c3,(w-sw)/2,(h-sh)/2,sw,sh,0,0,320,200);const im=$('th-'+t.id);if(im)im.src=oc.toDataURL('image/png')}}
+  const oc=document.createElement('canvas');oc.width=320;oc.height=200;const sw=Math.min(w,h*1.6),sh=sw/1.6;oc.getContext('2d').drawImage(c3,(w-sw)/2,(h-sh)/2,sw,sh,0,0,320,200);return oc.toDataURL('image/jpeg',.8)}
  finally{M=save.M;views.forEach((v,i)=>v.json=save.json[i]);cur=save.cur;sel3=save.sel;orbit.r=save.r;loading=false;buildScene()}}
+function tplFaces(t){return Object.fromEntries(FACES.map(f=>[f.id,t.faces&&t.faces[f.id]?faceJson(t.faces[f.id]):null]))}
+function thumbs(){if(thumbsDone||!renderer||!c3.width)return;thumbsDone=true;for(const t of TPL){const im=$('th-'+t.id);if(im)im.src=renderThumb(t.M,tplFaces(t))}}
 function openGal(){$('gal').hidden=false;if(!$('galGrid').children.length)renderGal();thumbs()}
 $('btnGal').addEventListener('click',openGal);document.querySelectorAll('[data-gal]').forEach(b=>b.addEventListener('click',openGal));
 $('galClose').addEventListener('click',()=>{$('gal').hidden=true});
@@ -789,7 +801,6 @@ function setMode(m){S.mode=m;saveCfg();$('mode2d').classList.toggle('on',m==='2d
 $('mode2d').addEventListener('click',()=>setMode('2d'));$('mode3d').addEventListener('click',()=>setMode('3d'));
 window.addEventListener('resize',size3);
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change',buildScene);
-let hasM=false;try{hasM=!!localStorage.getItem('herreria.m3d')}catch(e){}
 
 renderForm();frameCam();buildScene();renderPlist();pushHist();
 
@@ -799,10 +810,48 @@ $('btnShot').addEventListener('click',()=>{let url;if(S.mode==='3d'){if(!rendere
 $('shotClose').addEventListener('click',()=>{$('shot').hidden=true});
 $('shotCopy').addEventListener('click',async()=>{try{const blob=await (await fetch($('shotImg').src)).blob();await navigator.clipboard.write([new ClipboardItem({'image/png':blob})]);$('shotCopy').textContent='Copiada'}catch(e){$('shotCopy').textContent='No se pudo copiar: guardala desde la imagen'}setTimeout(()=>$('shotCopy').textContent='Copiar imagen',2500)});
 
+// ===== Proyectos: varios en este navegador, con exportar/importar para moverlos =====
+let PR={list:[],cur:null},LAST={kg:0,total:0};const INART=!!(window.claude&&window.claude.use);
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+function curPr(){return PR.list.find(p=>p.id===PR.cur)}
+function loadPR(){try{const j=JSON.parse(localStorage.getItem('herreria.projects'));if(j&&Array.isArray(j.list))PR=j}catch(e){}
+ if(!PR.list.length){try{const m=JSON.parse(localStorage.getItem('herreria.m3d')),f=JSON.parse(localStorage.getItem('herreria.faces'));
+  if(m&&m.parts){PR.list.push({id:uid(),name:'Proyecto 1',updated:Date.now(),M:m,faces:f&&f.views?Object.fromEntries(f.views.map(v=>[v.id,v.json])):{},cur:f?f.cur||0:0});PR.cur=PR.list[0].id;localStorage.removeItem('herreria.m3d');localStorage.removeItem('herreria.faces')}}catch(e){}}}
+function savePr(){const p=curPr();if(!p)return;p.M=M;p.faces=Object.fromEntries(views.map(v=>[v.id,v.json]));p.cur=cur;p.updated=Date.now();p.kg=LAST.kg;p.total=LAST.total;
+ try{localStorage.setItem('herreria.projects',JSON.stringify(PR))}catch(e){$('estStatus').textContent='No se pudo guardar: el navegador no deja usar almacenamiento.'}}
+function newPr(name){const p={id:uid(),name:name||('Proyecto '+(PR.list.length+1)),updated:Date.now(),M:JSON.parse(JSON.stringify(M)),faces:{},cur:0};PR.list.unshift(p);PR.cur=p.id;$('prName').value=p.name;return p}
+async function openPr(id){const p=PR.list.find(x=>x.id===id);if(!p)return;PR.cur=id;M=JSON.parse(JSON.stringify(p.M));sel3=null;views.forEach(v=>v.json=(p.faces&&p.faces[v.id])||null);cur=Math.min(p.cur||0,views.length-1);
+ $('prName').value=p.name;renderForm();frameCam();await load(views[cur].json);undo=[views[cur].json||snapshot()];hist3=[];renderTabs();update3();fitView()}
+$('prName').addEventListener('change',e=>{const p=curPr();if(p){p.name=e.target.value.trim()||p.name;e.target.value=p.name;savePr()}});
+function fecha(t){return new Date(t).toLocaleDateString('es-AR',{day:'numeric',month:'short'})}
+function renderPrj(){savePr();const G=$('prGrid');
+ G.innerHTML=PR.list.map(p=>`<div class="card" data-id="${p.id}" style="cursor:default"><img src="${p.thumb||''}" alt=""><b>${p.name}${p.id===PR.cur?' <span class="muted">(abierto)</span>':''}</b><span>${fecha(p.updated)} · ${num(p.kg||0)} kg · ${fmt(p.total||0)}</span>
+  <div class="row" style="padding:0 8px 8px;gap:4px"><button data-open="${p.id}">Abrir</button><button data-dup="${p.id}">Duplicar</button><button data-exp="${p.id}">Exportar</button><button data-del="${p.id}">Borrar</button></div></div>`).join('');
+ PR.list.forEach(p=>{if(!p.thumb||p.thumbAt!==p.updated){p.thumb=renderThumb(p.M,p.faces);p.thumbAt=p.updated;const im=G.querySelector(`[data-id="${p.id}"] img`);if(im)im.src=p.thumb}});
+ try{localStorage.setItem('herreria.projects',JSON.stringify(PR))}catch(e){}
+ G.querySelectorAll('[data-open]').forEach(b=>b.addEventListener('click',async()=>{$('prj').hidden=true;await openPr(b.dataset.open)}));
+ G.querySelectorAll('[data-dup]').forEach(b=>b.addEventListener('click',()=>{const p=PR.list.find(x=>x.id===b.dataset.dup),c=JSON.parse(JSON.stringify(p));c.id=uid();c.name=p.name+' (copia)';c.updated=Date.now();PR.list.unshift(c);renderPrj()}));
+ G.querySelectorAll('[data-exp]').forEach(b=>b.addEventListener('click',()=>exportPr(PR.list.find(x=>x.id===b.dataset.exp))));
+ G.querySelectorAll('[data-del]').forEach(b=>b.addEventListener('click',()=>{if(b.dataset.armed){const i=PR.list.findIndex(x=>x.id===b.dataset.del);const wasCur=PR.list[i].id===PR.cur;PR.list.splice(i,1);
+   if(wasCur){PR.cur=null;if(PR.list.length)openPr(PR.list[0].id);else{newPr();applyTpl(TPL[1])}}renderPrj()}else{b.dataset.armed='1';b.textContent='¿Borrar? Sí';b.classList.add('warn');setTimeout(()=>{b.dataset.armed='';b.textContent='Borrar';b.classList.remove('warn')},3000)}}))}
+function exportPr(p){const {thumb,thumbAt,...clean}=p;const txt=JSON.stringify({app:'cotizador-herreria',v:1,project:clean});$('prIO').hidden=false;$('prText').value=txt;
+ if(INART){$('prIOmsg').textContent='Copiá este texto y pegalo en "Importar" en el otro aparato (acá no se pueden descargar archivos).'}
+ else{$('prIOmsg').textContent='Se descargó el archivo. También podés copiar el texto.';const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([txt],{type:'application/json'}));a.download=(p.name||'proyecto').replace(/[^\w\-]+/g,'_')+'.json';document.body.appendChild(a);a.click();a.remove()}}
+function importText(txt){let j;try{j=JSON.parse(txt)}catch(e){$('prIOmsg').textContent='Eso no es un proyecto válido.';return}const p=j&&j.project;if(!p||!p.M||!p.M.parts){$('prIOmsg').textContent='Eso no es un proyecto válido.';return}
+ p.id=uid();p.updated=Date.now();p.faces=p.faces||{};delete p.thumb;PR.list.unshift(p);$('prIOmsg').textContent='Importado: '+p.name;$('prText').value='';renderPrj()}
+$('btnPrj').addEventListener('click',()=>{$('prj').hidden=false;$('prIO').hidden=true;renderPrj()});
+$('prClose').addEventListener('click',()=>{$('prj').hidden=true});
+$('prNew').addEventListener('click',async()=>{$('prj').hidden=true;savePr();newPr();M={W:150,H:120,D:3,p:'tu30',edges:{top:false,bot:false,vert:false},parts:[]};views.forEach(v=>v.json=null);cur=0;sel3=null;renderForm();frameCam();await load(null);undo=[];hist3=[];renderTabs();update3();fitView();openGal()});
+$('prImport').addEventListener('click',()=>{$('prIO').hidden=false;$('prText').value='';$('prIOmsg').textContent=INART?'Pegá el texto del proyecto y tocá "Cargar lo pegado".':'Elegí el archivo .json o pegá el texto del proyecto.'});
+$('prTextLoad').addEventListener('click',()=>importText($('prText').value));
+$('prTextCopy').addEventListener('click',async()=>{try{await navigator.clipboard.writeText($('prText').value);$('prTextCopy').textContent='Copiado'}catch(e){$('prText').select();$('prTextCopy').textContent='Seleccioná y copiá'}setTimeout(()=>$('prTextCopy').textContent='Copiar',2000)});
+$('prFile').addEventListener('change',e=>{const f=e.target.files[0];if(!f)return;f.text().then(importText);e.target.value=''});
+if(INART)$('prFile').hidden=true;
+
 // ---- arranque ----
 theme();fit();renderPrices();
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change',theme);
-let saved=null;try{saved=JSON.parse(localStorage.getItem('herreria.faces'))}catch(e){}
-if(saved&&saved.views){views.forEach(v=>{const o=saved.views.find(x=>x.id===v.id);if(o)v.json=o.json});cur=Math.min(saved.cur||0,views.length-1);load(views[cur].json).then(()=>{undo=[views[cur].json||snapshot()];renderTabs();fitView()})}else if(!hasM)applyTpl(TPL[1]).then(()=>setTimeout(openGal,400));else{load(null).then(()=>{renderTabs();fitView()})}
+loadPR();
+if(PR.cur&&curPr()){openPr(PR.cur)}else{newPr('Proyecto 1');applyTpl(TPL[1]).then(()=>setTimeout(openGal,400))}
 renderProps();setMode(S.mode||'2d');
 </script>
