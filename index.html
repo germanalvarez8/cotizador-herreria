@@ -834,9 +834,9 @@ function renderPrj(){savePr();const G=$('prGrid');
  G.querySelectorAll('[data-exp]').forEach(b=>b.addEventListener('click',()=>exportPr(PR.list.find(x=>x.id===b.dataset.exp))));
  G.querySelectorAll('[data-del]').forEach(b=>b.addEventListener('click',()=>{if(b.dataset.armed){const i=PR.list.findIndex(x=>x.id===b.dataset.del);const wasCur=PR.list[i].id===PR.cur;PR.list.splice(i,1);
    if(wasCur){PR.cur=null;if(PR.list.length)openPr(PR.list[0].id);else{newPr();applyTpl(TPL[1])}}renderPrj()}else{b.dataset.armed='1';b.textContent='¿Borrar? Sí';b.classList.add('warn');setTimeout(()=>{b.dataset.armed='';b.textContent='Borrar';b.classList.remove('warn')},3000)}}))}
-function exportPr(p){const {thumb,thumbAt,...clean}=p;const txt=JSON.stringify({app:'cotizador-herreria',v:1,project:clean});$('prIO').hidden=false;$('prText').value=txt;
- if(INART){$('prIOmsg').textContent='Copiá este texto y pegalo en "Importar" en el otro aparato (acá no se pueden descargar archivos).'}
- else{$('prIOmsg').textContent='Se descargó el archivo. También podés copiar el texto.';const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([txt],{type:'application/json'}));a.download=(p.name||'proyecto').replace(/[^\w\-]+/g,'_')+'.json';document.body.appendChild(a);a.click();a.remove()}}
+async function exportPr(p){const {thumb,thumbAt,...clean}=p;const txt=JSON.stringify({app:'cotizador-herreria',v:1,project:clean}),fname=(p.name||'proyecto').replace(/[^\w\-]+/g,'_')+'.json';$('prIO').hidden=false;$('prText').value=txt;
+ if(INART){$('prIOmsg').textContent='Copiá este texto y pegalo en "Importar" en el otro aparato.';try{const dl=await claude.use('downloads');if(dl){await dl.save({filename:fname,data:txt});$('prIOmsg').textContent='Archivo guardado. También podés copiar el texto.'}}catch(e){}}
+ else{$('prIOmsg').textContent='Se descargó el archivo. También podés copiar el texto.';const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([txt],{type:'application/json'}));a.download=fname;document.body.appendChild(a);a.click();a.remove()}}
 function importText(txt){let j;try{j=JSON.parse(txt)}catch(e){$('prIOmsg').textContent='Eso no es un proyecto válido.';return}const p=j&&j.project;if(!p||!p.M||!p.M.parts){$('prIOmsg').textContent='Eso no es un proyecto válido.';return}
  p.id=uid();p.updated=Date.now();p.faces=p.faces||{};delete p.thumb;PR.list.unshift(p);$('prIOmsg').textContent='Importado: '+p.name;$('prText').value='';renderPrj()}
 $('btnPrj').addEventListener('click',()=>{$('prj').hidden=false;$('prIO').hidden=true;renderPrj()});
