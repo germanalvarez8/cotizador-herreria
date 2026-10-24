@@ -229,7 +229,7 @@ th{font-family:var(--font-d);font-weight:600;letter-spacing:.04em;text-transform
         <div><div class="muted">Precio sugerido</div><div class="tot" id="total"></div></div>
       </div>
       <div class="muted">Barras de 6 m, corte 3 mm. Los precios son <b>ejemplo</b>, editalos abajo.</div>
-      <button id="btnCopy">Copiar presupuesto para WhatsApp</button>
+      <div class="row"><button id="btnCopy" style="flex:1">Copiar presupuesto para WhatsApp</button><button id="btnCuts" style="flex:1">Copiar lista de cortes para el taller</button></div>
     </div>
 
     <div class="box">
@@ -559,6 +559,18 @@ $('photoAdj').addEventListener('click',()=>{const im=photoObj();if(!im)return;co
 $('photoDel').addEventListener('click',()=>{const im=photoObj();if(im){canvas.remove(im);canvas.discardActiveObject();photoUI();after()}});
 canvas.on('object:modified',e=>{if(e.target&&e.target.kind==='photo')photoUI()});
 function summary(){const r=calc(bomObjects(),S);return ['PRESUPUESTO HERRERÍA','',...r.rows.map(x=>`• ${x.name}: ${x.bars} barra(s) de 6 m (${num(x.m,1)} m útiles, ${num(x.kg)} kg) ${fmt(x.cost)}`),...r.sheetRows.map(x=>`• ${x.name}: ${x.hojas} hoja(s) de 1x2 m (${num(x.m2,2)} m², ${num(x.kg)} kg) ${fmt(x.cost)}`),...r.catRows.map(x=>`• ${x.name} x${x.n}: ${fmt(x.cost)}`),'',`Peso total: ${num(r.kg)} kg`,`Material: ${fmt(r.mat)}`,`Mano de obra: ${S.labor}%`,`Pintura y consumibles: ${fmt(S.extras)}`,`TOTAL: ${fmt(r.total)}`].join('\n')}
+// Machete de taller: qué cortar, cuántos y cómo repartir cada barra. Agrupado por perfil.
+function cutList(){const objs=objects3d(),r=calc(objs,S),p=curPr(),L=[`LISTA DE CORTES · ${p?p.name:''}`,`Caja ${M.W} × ${M.H} × ${M.D} cm exteriores · largos exteriores, corte a inglete o lado seguro`,''];
+ const L1=x=>num(x,1);
+ r.rows.forEach(row=>{L.push(`${row.name.toUpperCase()} · ${row.bars} barra${row.bars>1?'s':''} de 6 m`);
+  const g={};objs.filter(o=>o.kind==='seg'&&o.p===row.p).forEach(o=>{const len=Math.round(o.width*(o.scaleX||1)/PX*2)/2,k=`${len}|${o.what||''}|${o.src||''}`;g[k]=g[k]||{len,what:o.what||'',src:o.src||'',n:0};g[k].n+=Math.max(1,o.qty||1)});
+  Object.values(g).sort((a,b)=>b.len-a.len).forEach(x=>L.push(`□ ${x.n} × ${L1(x.len)} cm · ${x.what}${x.src?' · '+x.src:''}`));
+  row.cuts.forEach((b,i)=>{const g=[];b.cuts.forEach(c=>{const k=Math.round(c*2)/2,e=g.find(x=>x.k===k);if(e)e.n++;else g.push({k,n:1})});L.push(`  barra ${i+1}: ${g.map(x=>x.n>1?`${x.n} × ${L1(x.k)}`:L1(x.k)).join(' + ')}${b.rem>=5?' → sobra '+L1(b.rem):''}`)});L.push('')});
+ r.sheetRows.forEach(x=>{L.push(`${x.name.toUpperCase()} · ${x.hojas} hoja${x.hojas>1?'s':''} de 1×2 m`);
+  objs.filter(o=>o.kind==='sheet'&&o.p===x.id&&!o.ref).forEach(o=>L.push(`□ ${Math.max(1,o.qty||1)} × ${L1(o.width*(o.scaleX||1)/PX)} × ${L1(o.height*(o.scaleY||1)/PX)} cm · ${o.what||'chapa'}${o.src?' · '+o.src:''}`));L.push('')});
+ if(r.catRows.length){L.push('CATÁLOGO');r.catRows.forEach(x=>L.push(`□ ${x.n} × ${x.name}`));L.push('')}
+ L.push(`Total ${num(r.kg)} kg`);return L.join('\n')}
+$('btnCuts').addEventListener('click',async()=>{const t=cutList();try{await navigator.clipboard.writeText(t);$('btnCuts').textContent='Copiada'}catch(e){const ta=document.createElement('textarea');ta.value=t;ta.style.width='100%';ta.style.minHeight='160px';$('btnCuts').after(ta);ta.select();$('btnCuts').textContent='Seleccioná y copiá el texto'}setTimeout(()=>$('btnCuts').textContent='Copiar lista de cortes para el taller',2500)});
 $('btnCopy').addEventListener('click',async()=>{const t=summary();try{await navigator.clipboard.writeText(t);$('btnCopy').textContent='Copiado'}catch(e){const ta=document.createElement('textarea');ta.value=t;ta.style.width='100%';$('btnCopy').after(ta);ta.select();$('btnCopy').textContent='Seleccioná y copiá el texto'}setTimeout(()=>$('btnCopy').textContent='Copiar presupuesto para WhatsApp',2500)});
 
 // ---- ejemplo ----
@@ -634,15 +646,15 @@ function p3(pl,u,v,at){const o={};o[pl.u]=u;o[pl.v]=v;o[pl.n]=at;return [o.x,o.y
 // Convención: las medidas de la caja son EXTERIORES. Los hierros van por dentro de la caja (eje a medio perfil del borde)
 // y se cuentan por la medida exterior (L), que es la longitud de corte a inglete y el lado seguro para corte a tope.
 function members(){const ms=[],sh=[],ex=[],{W,H,D,p,edges:E}=M,i0=Math.max(P[p].w,.8)/2,a=i0,x1=W-i0,y1=H-i0,z1=D-i0;
- const seg=(a,b,p,i,L)=>ms.push({p,a,b,i,L,len:L||Math.hypot(b[0]-a[0],b[1]-a[1],b[2]-a[2])});
- if(E.top){seg([a,y1,a],[x1,y1,a],p,-1,W);seg([a,y1,z1],[x1,y1,z1],p,-1,W);seg([a,y1,a],[a,y1,z1],p,-1,D);seg([x1,y1,a],[x1,y1,z1],p,-1,D)}
- if(E.bot){seg([a,a,a],[x1,a,a],p,-1,W);seg([a,a,z1],[x1,a,z1],p,-1,W);seg([a,a,a],[a,a,z1],p,-1,D);seg([x1,a,a],[x1,a,z1],p,-1,D)}
- if(E.vert){seg([a,a,a],[a,y1,a],p,-1,H);seg([x1,a,a],[x1,y1,a],p,-1,H);seg([a,a,z1],[a,y1,z1],p,-1,H);seg([x1,a,z1],[x1,y1,z1],p,-1,H)}
+ const seg=(a,b,p,i,L,what)=>ms.push({p,a,b,i,L,what,len:L||Math.hypot(b[0]-a[0],b[1]-a[1],b[2]-a[2])});
+ if(E.top){seg([a,y1,a],[x1,y1,a],p,-1,W,'arista arriba');seg([a,y1,z1],[x1,y1,z1],p,-1,W,'arista arriba');seg([a,y1,a],[a,y1,z1],p,-1,D,'arista arriba');seg([x1,y1,a],[x1,y1,z1],p,-1,D,'arista arriba')}
+ if(E.bot){seg([a,a,a],[x1,a,a],p,-1,W,'arista abajo');seg([a,a,z1],[x1,a,z1],p,-1,W,'arista abajo');seg([a,a,a],[a,a,z1],p,-1,D,'arista abajo');seg([x1,a,a],[x1,a,z1],p,-1,D,'arista abajo')}
+ if(E.vert){seg([a,a,a],[a,y1,a],p,-1,H,'pata');seg([x1,a,a],[x1,y1,a],p,-1,H,'pata');seg([a,a,z1],[a,y1,z1],p,-1,H,'pata');seg([x1,a,z1],[x1,y1,z1],p,-1,H,'pata')}
  M.parts.forEach((q,i)=>{const pl=PLANES[q.plane],U=M[AXS[pl.u]],V=M[AXS[pl.v]],N=M[AXS[pl.n]];
   const wq=q.type==='sheet'?Math.max(SH[q.sheet]?SH[q.sheet].e/10:.2,.6):Math.max(P[q.p].w,.8),iq=wq/2,at=Math.min(N-iq,Math.max(iq,q.at)),P_=(u,v)=>p3(pl,u,v,at);
-  if(q.type==='frame'){seg(P_(iq,iq),P_(U-iq,iq),q.p,i,U);seg(P_(iq,V-iq),P_(U-iq,V-iq),q.p,i,U);seg(P_(iq,iq),P_(iq,V-iq),q.p,i,V);seg(P_(U-iq,iq),P_(U-iq,V-iq),q.p,i,V)}
-  if(q.type==='bars'){const along=q.dir==='u',span=along?V:U,run=along?U:V,n=barN(span,q.sp),pitch=span/(n+1);for(let k=1;k<=n;k++)along?seg(P_(i0,pitch*k),P_(run-i0,pitch*k),q.p,i,run-2*i0):seg(P_(pitch*k,i0),P_(pitch*k,run-i0),q.p,i,run-2*i0)}
-  if(q.type==='bar'){normBar(q);const ax=q.axis,Lx=M[AXS[ax]],o=[0,1,2].map(j=>{const nm='xyz'[j];return nm===ax?0:Math.min(M[AXS[nm]]-iq,Math.max(iq,q.pos[nm]))}),a1=o.slice(),b1=o.slice(),ai='xyz'.indexOf(ax);a1[ai]=i0;b1[ai]=Lx-i0;seg(a1,b1,q.p,i,Lx-2*i0)}
+  if(q.type==='frame'){const wh=`marco/estante a ${Math.round(at)} cm`;seg(P_(iq,iq),P_(U-iq,iq),q.p,i,U,wh);seg(P_(iq,V-iq),P_(U-iq,V-iq),q.p,i,U,wh);seg(P_(iq,iq),P_(iq,V-iq),q.p,i,V,wh);seg(P_(U-iq,iq),P_(U-iq,V-iq),q.p,i,V,wh)}
+  if(q.type==='bars'){const along=q.dir==='u',span=along?V:U,run=along?U:V,n=barN(span,q.sp),pitch=span/(n+1);for(let k=1;k<=n;k++)along?seg(P_(i0,pitch*k),P_(run-i0,pitch*k),q.p,i,run-2*i0,'grilla'):seg(P_(pitch*k,i0),P_(pitch*k,run-i0),q.p,i,run-2*i0,'grilla')}
+  if(q.type==='bar'){normBar(q);const ax=q.axis,Lx=M[AXS[ax]],o=[0,1,2].map(j=>{const nm='xyz'[j];return nm===ax?0:Math.min(M[AXS[nm]]-iq,Math.max(iq,q.pos[nm]))}),a1=o.slice(),b1=o.slice(),ai='xyz'.indexOf(ax);a1[ai]=i0;b1[ai]=Lx-i0;seg(a1,b1,q.p,i,Lx-2*i0,'travesaño')}
   if(q.type==='sheet')sh.push({p:q.sheet,w:U,h:V,pl,at,i});
   });
  FACES.forEach((f,k)=>face3d(f,k,ex));
@@ -655,7 +667,8 @@ function xf2(o){const a=(o.angle||0)*Math.PI/180,sx=o.scaleX||1,sy=o.scaleY||1,c
 let CURVE=0;
 function face3d(f,k,ex){const all=viewObjs(f.id);if(!all.length)return;const pl=PLANES[f.pl],at0=f.at(),i=-2-k,src=f.name,N=M[AXS[pl.n]];let cid=null;
  all.forEach((o,oi)=>{if(o.ref||o.kind==='photo')return;const fx=xf2(o),w=o.kind==='sheet'?Math.max(SH[o.p]?SH[o.p].e/10:.2,.6):(o.p&&P[o.p]?Math.max(P[o.p].w,.8):1),at=Math.min(N-w/2,Math.max(w/2,at0-f.out*(w/2+(o.depth||0)))),T=(lx,ly)=>{const [x,y]=fx(lx,ly),[u,v]=f.map(x,y);return p3(pl,u,v,at)},W=o.width||0,H=o.height||0,sx=o.scaleX||1,sy=o.scaleY||1,ins=2*(o.inset||0);let L=null;
-  const line=(a,b)=>ex.push({t:'bar',a:T(...a),b:T(...b),w,i,oi,p:o.p,qty:Math.max(1,o.qty||1),curve:cid,src,L}),chain=pts=>{cid=cid||++CURVE;for(let k=1;k<pts.length;k++)line(pts[k-1],pts[k]);cid=null};
+  const what={seg:'tramo',frame:'marco',bars:'barrote',arc:'arco',vol:'voluta'}[o.kind]||o.kind;
+  const line=(a,b)=>ex.push({t:'bar',a:T(...a),b:T(...b),w,i,oi,p:o.p,qty:Math.max(1,o.qty||1),curve:cid,src,L,what}),chain=pts=>{cid=cid||++CURVE;for(let k=1;k<pts.length;k++)line(pts[k-1],pts[k]);cid=null};
   if(o.kind==='seg')line([0,H/2],[W,H/2]);
   else if(o.kind==='frame'){L=W*sx/PX+ins;line([0,0],[W,0]);line([W,H],[0,H]);L=H*sy/PX+ins;line([W,0],[W,H]);line([0,H],[0,0]);L=null}
   else if(o.kind==='bars'){const v=o.dir==='v',span=v?o.bw:o.bh,n=barN(span/PX,o.sp),pitch=span/(n+1);for(let k=1;k<=n;k++)v?line([pitch*k,0],[pitch*k,o.bh]):line([0,pitch*k],[o.bw,pitch*k])}
@@ -675,13 +688,13 @@ let BOMINFO={dups:0,warn:[],bySrc:[]};
 function normBar(q){if(q.axis)return q;const pl=PLANES[q.plane||'xy'];q.axis=q.dir==='v'?pl.v:pl.u;q.pos={x:M.W/2,y:M.H/2,z:M.D/2};q.pos[pl.n]=q.at||0;q.pos[q.dir==='v'?pl.u:pl.v]=q.off||0;return q}
 function objects3d(){const {ms,sh,ex}=members(),seen=new Map(),geo=new Map(),curves=new Map(),out=[],warn=[];let dups=0;
  const r=v=>v.map(x=>Math.round(x*2)/2).join(','),gk=(a,b)=>{const A=r(a),B=r(b);return A<B?A+'|'+B:B+'|'+A},len=(a,b)=>Math.hypot(b[0]-a[0],b[1]-a[1],b[2]-a[2]);
- const addS=(p,a,b,qty,src,L)=>{if(len(a,b)<.05)return;const g=gk(a,b),k=p+'|'+g;if(seen.has(k)){dups++;seen.get(k).qty=Math.max(seen.get(k).qty,qty);return}
+const addS=(p,a,b,qty,src,L,what)=>{if(len(a,b)<.05)return;const g=gk(a,b),k=p+'|'+g;if(seen.has(k)){dups++;seen.get(k).qty=Math.max(seen.get(k).qty,qty);return}
   if(geo.has(g)&&geo.get(g)!==p){const w=`${P[geo.get(g)].name} y ${P[p].name} ocupan el mismo lugar (${src}). Se cuentan los dos.`;if(!warn.includes(w))warn.push(w)}geo.set(g,p);
-  const e={kind:'seg',p,width:(L||len(a,b))*PX,qty,src};seen.set(k,e);out.push(e)};
- ms.forEach(m=>addS(m.p,m.a,m.b,1,m.i<0?'Caja':'Partes interiores',m.L));
- ex.forEach(e=>{if(e.t!=='bar'||!e.p||e.curve==='cat')return;if(e.curve){let c=curves.get(e.curve);if(!c){c={kind:'seg',p:e.p,width:0,qty:e.qty,src:e.src};curves.set(e.curve,c)}c.width+=len(e.a,e.b)*PX}else addS(e.p,e.a,e.b,e.qty,e.src,e.L)});
+  const e={kind:'seg',p,width:(L||len(a,b))*PX,qty,src,what};seen.set(k,e);out.push(e)};
+ ms.forEach(m=>addS(m.p,m.a,m.b,1,m.i<0?'Caja':'Partes interiores',m.L,m.what));
+ ex.forEach(e=>{if(e.t!=='bar'||!e.p||e.curve==='cat')return;if(e.curve){let c=curves.get(e.curve);if(!c){c={kind:'seg',p:e.p,width:0,qty:e.qty,src:e.src,what:e.what+' (desarrollo)'};curves.set(e.curve,c)}c.width+=len(e.a,e.b)*PX}else addS(e.p,e.a,e.b,e.qty,e.src,e.L,e.what)});
  out.push(...curves.values());
- sh.forEach(x=>out.push({kind:'sheet',p:x.p,width:x.w*PX,height:x.h*PX,src:'Partes interiores'}));
+ sh.forEach(x=>out.push({kind:'sheet',p:x.p,width:x.w*PX,height:x.h*PX,src:'Partes interiores',what:`chapa a ${Math.round(x.at)} cm`}));
  FACES.forEach(f=>viewObjs(f.id).forEach(o=>{if((o.kind==='cat'||o.kind==='sheet')&&!o.ref)out.push({...o,src:f.name})}));
  const by={};out.forEach(o=>{const q=Math.max(1,o.qty||1),b=by[o.src]=by[o.src]||{src:o.src,n:0,m:0,cat:0,m2:0};if(o.kind==='seg'){b.n+=q;b.m+=o.width*(o.scaleX||1)/PX*q/100}else if(o.kind==='cat')b.cat+=q;else b.m2+=sheetM2(o)});
  BOMINFO={dups,warn,bySrc:Object.values(by)};return out}

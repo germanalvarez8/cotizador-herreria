@@ -16,7 +16,7 @@ Un solo archivo HTML. Sin build, sin backend. Se abre en el navegador y guarda e
 - **Materiales.** Cada hierro existe una sola vez en el modelo. Si una arista de la caja y el borde de un marco dibujado ocupan el mismo lugar, se cuenta uno. Corte en barras de 6 m (first-fit decreasing, kerf 3 mm) con sobrantes, kg por tabla de perfiles, chapa en hojas de 1×2 m, catálogo por unidad, mano de obra y extras. Desglose por origen para auditar.
 - **Modelos base.** Galería de doce modelos (rejas, portón, puerta, baranda, mesas, banqueta, rack, estantería, parrilla, brasero) con miniaturas renderizadas; elegís uno y lo retocás.
 - **Proyectos.** Varios proyectos con nombre, guardados solos en el navegador, con duplicar, borrar y exportar/importar como archivo o texto para pasarlos a otro aparato.
-- **Salida.** Presupuesto en texto para WhatsApp e imagen del 3D o del plano para el cliente.
+- **Salida.** Presupuesto en texto para WhatsApp, lista de cortes para el taller (qué cortar, cuántos, de qué perfil, y cómo repartir cada barra, con casillas para tildar) e imagen del 3D o del plano para el cliente.
 - **Estimar desde una foto.** Con una clave API de Anthropic cargada en el navegador, el modelo propone medidas, perfiles y cantidades a partir de la foto que mandó el cliente y lo arma en el plano para corregir.
 
 ![Caras 2D con el 3D al lado](docs/caras-2d.png)
