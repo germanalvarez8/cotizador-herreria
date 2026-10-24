@@ -324,7 +324,7 @@ const num=(n,d=1)=>n.toLocaleString('es-AR',{maximumFractionDigits:d});
 const css=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 let S={snap:5,labor:100,extras:15000,prices:{},catPrices:{},sheetPrices:{},mode:'2d'};
 try{Object.assign(S,JSON.parse(localStorage.getItem('herreria.cfg'))||{})}catch(e){}
-const PROPS=['kind','p','sp','dir','sweep','turns','r','r0','r1','bw','bh','catId','qty','ref','inset','lockScalingX','lockScalingY','perPixelTargetFind'];
+const PROPS=['kind','p','sp','dir','sweep','turns','r','r0','r1','bw','bh','catId','qty','ref','inset','depth','lockScalingX','lockScalingY','perPixelTargetFind'];
 
 // ---- plano ----
 const canvas=new fabric.Canvas('c',{preserveObjectStacking:true,uniformScaling:false,selectionColor:css('--sel'),selectionBorderColor:css('--accent')});
@@ -391,7 +391,7 @@ canvas.on('object:modified',e=>{const o=e.target;
 canvas.on('object:added',after);canvas.on('object:removed',after);
 canvas.on('selection:created',onSel);canvas.on('selection:updated',onSel);canvas.on('selection:cleared',()=>{$('dim').style.display='none';renderProps()});
 function onSel(){const o=canvas.getActiveObject();showDim(o);renderProps()}
-function dims(o){const q=pieces(o),pre=o.ref?'(ya contado) ':'',suf=(o.qty||1)>1?` ×${o.qty}`:'';return pre+dims0(o,q)+suf}
+function dims(o){const q=pieces(o),pre=o.ref?'(ya contado) ':'',suf=((o.qty||1)>1?` ×${o.qty}`:'')+(o.depth?` · ${num(o.depth)} cm adentro`:'');return pre+dims0(o,q)+suf}
 function dims0(o,q){if(o.ref){q=pieces({...o,ref:false})}
  if(o.kind==='seg')return `${num(q[0][1])} cm`;
  if(o.kind==='sheet')return `chapa ${num(o.width*o.scaleX/PX)} × ${num(o.height*o.scaleY/PX)} cm`;
@@ -493,14 +493,15 @@ function renderProps(){const o=canvas.getActiveObject(),box=$('props');
  if(o.kind==='vol')h=ps+fld('r1','Radio externo cm',o.r1*o.scaleX,.5)+fld('r0','Radio interno cm',o.r0*o.scaleX,.5)+fld('turns','Vueltas',o.turns,.25)+fld('angle','Giro °',o.angle);
  if(o.kind==='cat')h=`<label>Pieza<select data-k="catId">${CATALOG.map(c=>`<option value="${c.id}"${c.id===o.catId?' selected':''}>${c.name}</option>`).join('')}</select></label>`+fld('angle','Giro °',o.angle);
  if(o.kind==='sheet')h=`<label>Chapa<select data-k="p">${SHEETS.map(x=>`<option value="${x.id}"${x.id===o.p?' selected':''}>${x.name}</option>`).join('')}</select></label>`+fld('w','Ancho cm',o.width*o.scaleX/PX)+fld('h','Alto cm',o.height*o.scaleY/PX)+fld('angle','Giro °',o.angle);
- h+=fld('qty','Cantidad',o.qty||1);
- box.innerHTML=`<h2>Parte</h2><div><b>${dims(o)}</b></div><div class="row">${h}</div><div class="row"><button id="pRef">${o.ref?'Volver a contar en esta vista':'Marcar como ya contado en otra vista'}</button></div><div class="muted">Cantidad: piezas iguales que quedan una detrás de otra en esta vista (las 4 patas de una mesa son 2 visibles × 2).</div>`;
+ h+=fld('qty','Cantidad',o.qty||1)+fld('depth','Hacia adentro cm',o.depth||0);
+ box.innerHTML=`<h2>Parte</h2><div><b>${dims(o)}</b></div><div class="row">${h}</div><div class="row"><button id="pRef">${o.ref?'Volver a contar en esta vista':'Marcar como ya contado en otra vista'}</button></div><div class="muted">Cantidad: piezas iguales una detrás de otra en esta vista. Hacia adentro: 0 es sobre la cara; más centímetros la hunden hacia el interior de la caja (también se arrastra en el 3D).</div>`;
  box.querySelectorAll('[data-k]').forEach(inp=>inp.addEventListener('change',()=>apply(o,inp.dataset.k,inp.type==='number'?+inp.value:inp.value)));
  $('pRef').addEventListener('click',toggleRef);
 }
 function apply(o,k,v){const st=css('--steel');let n=o;
  if(k==='angle'){o.set('angle',v)}
  else if(k==='qty'){o.qty=Math.max(1,Math.round(v))}
+ else if(k==='depth'){o.depth=Math.max(0,v)}
  else if(o.kind==='sheet'){if(k==='p')o.p=v;if(k==='w')o.set('scaleX',v*PX/o.width);if(k==='h')o.set('scaleY',v*PX/o.height)}
  else if(k==='p'){const w=Math.max(P[v].w*PX,2);o.p=v;
   if(o.kind==='seg')o.set({height:w});else if(o.kind==='frame'){const ext=[o.width*o.scaleX/PX+2*(o.inset||0),o.height*o.scaleY/PX+2*(o.inset||0)],ni=P[v].w/2;o.set({strokeWidth:w,inset:ni,scaleX:1,scaleY:1,width:(ext[0]-2*ni)*PX,height:(ext[1]-2*ni)*PX,left:o.left+(ni-(o.inset||0))*PX,top:o.top+(ni-(o.inset||0))*PX})}else if(o.kind==='arc'||o.kind==='vol')o.set({strokeWidth:w});
@@ -605,7 +606,7 @@ $('btnEst').addEventListener('click',async()=>{const st=$('estStatus'),key=$('ap
 // Planos: u y v son los ejes de la cara, n el eje normal. 'at' es la posición sobre n en cm.
 const PLANES={xz:{name:'Horizontal (estante, tapa, piso)',u:'x',v:'z',n:'y'},xy:{name:'Frente / fondo',u:'x',v:'y',n:'z'},yz:{name:'Lateral izq. / der.',u:'z',v:'y',n:'x'}};
 const AXS={x:'W',y:'H',z:'D'};
-let M={W:80,H:90,D:50,p:'an25',edges:{top:true,bot:false,vert:true},parts:[]},sel3=null;
+let M={W:80,H:90,D:50,p:'an25',edges:{top:true,bot:false,vert:true},parts:[]},sel3=null,selObj=null;
 function saveM(){savePr()}
 function p3(pl,u,v,at){const o={};o[pl.u]=u;o[pl.v]=v;o[pl.n]=at;return [o.x,o.y,o.z]}
 // Devuelve hierros {p,a,b,len,i} y chapas {p,w,h,pl,at,i}; i = índice de parte, -1 = caja.
@@ -620,7 +621,7 @@ function members(){const ms=[],sh=[],ex=[],{W,H,D,p,edges:E}=M,i0=Math.max(P[p].
   const wq=q.type==='sheet'?Math.max(SH[q.sheet]?SH[q.sheet].e/10:.2,.6):Math.max(P[q.p].w,.8),iq=wq/2,at=Math.min(N-iq,Math.max(iq,q.at)),P_=(u,v)=>p3(pl,u,v,at);
   if(q.type==='frame'){seg(P_(iq,iq),P_(U-iq,iq),q.p,i,U);seg(P_(iq,V-iq),P_(U-iq,V-iq),q.p,i,U);seg(P_(iq,iq),P_(iq,V-iq),q.p,i,V);seg(P_(U-iq,iq),P_(U-iq,V-iq),q.p,i,V)}
   if(q.type==='bars'){const along=q.dir==='u',span=along?V:U,run=along?U:V,n=barN(span,q.sp),pitch=span/(n+1);for(let k=1;k<=n;k++)along?seg(P_(i0,pitch*k),P_(run-i0,pitch*k),q.p,i,run-2*i0):seg(P_(pitch*k,i0),P_(pitch*k,run-i0),q.p,i,run-2*i0)}
-  if(q.type==='bar'){q.dir==='u'?seg(P_(i0,q.off),P_(U-i0,q.off),q.p,i,U-2*i0):seg(P_(q.off,i0),P_(q.off,V-i0),q.p,i,V-2*i0)}
+  if(q.type==='bar'){normBar(q);const ax=q.axis,Lx=M[AXS[ax]],o=[0,1,2].map(j=>{const nm='xyz'[j];return nm===ax?0:Math.min(M[AXS[nm]]-iq,Math.max(iq,q.pos[nm]))}),a1=o.slice(),b1=o.slice(),ai='xyz'.indexOf(ax);a1[ai]=i0;b1[ai]=Lx-i0;seg(a1,b1,q.p,i,Lx-2*i0)}
   if(q.type==='sheet')sh.push({p:q.sheet,w:U,h:V,pl,at,i});
   });
  FACES.forEach((f,k)=>face3d(f,k,ex));
@@ -631,24 +632,26 @@ function bbox2d(objs){let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;for(const o of objs){con
 function xf2(o){const a=(o.angle||0)*Math.PI/180,sx=o.scaleX||1,sy=o.scaleY||1,c=Math.cos(a),sn=Math.sin(a);return (lx,ly)=>[(o.left+lx*sx*c-ly*sy*sn)/PX,(o.top+lx*sx*sn+ly*sy*c)/PX]}
 // i de cara = -2-k para distinguirlas de las partes; el clic en 3D lleva a editar esa cara.
 let CURVE=0;
-function face3d(f,k,ex){const objs=viewObjs(f.id).filter(o=>!o.ref);if(!objs.length)return;const pl=PLANES[f.pl],at0=f.at(),i=-2-k,src=f.name;let cid=null;
- for(const o of objs){const fx=xf2(o),w=o.kind==='sheet'?Math.max(SH[o.p]?SH[o.p].e/10:.2,.6):(o.p&&P[o.p]?Math.max(P[o.p].w,.8):1),at=at0-f.out*w/2,T=(lx,ly)=>{const [x,y]=fx(lx,ly),[u,v]=f.map(x,y);return p3(pl,u,v,at)},W=o.width||0,H=o.height||0,sx=o.scaleX||1,sy=o.scaleY||1,ins=2*(o.inset||0);let L=null;
-  const line=(a,b)=>ex.push({t:'bar',a:T(...a),b:T(...b),w,i,p:o.p,qty:Math.max(1,o.qty||1),curve:cid,src,L}),chain=pts=>{cid=cid||++CURVE;for(let k=1;k<pts.length;k++)line(pts[k-1],pts[k]);cid=null};
+function face3d(f,k,ex){const all=viewObjs(f.id);if(!all.length)return;const pl=PLANES[f.pl],at0=f.at(),i=-2-k,src=f.name,N=M[AXS[pl.n]];let cid=null;
+ all.forEach((o,oi)=>{if(o.ref)return;const fx=xf2(o),w=o.kind==='sheet'?Math.max(SH[o.p]?SH[o.p].e/10:.2,.6):(o.p&&P[o.p]?Math.max(P[o.p].w,.8):1),at=Math.min(N-w/2,Math.max(w/2,at0-f.out*(w/2+(o.depth||0)))),T=(lx,ly)=>{const [x,y]=fx(lx,ly),[u,v]=f.map(x,y);return p3(pl,u,v,at)},W=o.width||0,H=o.height||0,sx=o.scaleX||1,sy=o.scaleY||1,ins=2*(o.inset||0);let L=null;
+  const line=(a,b)=>ex.push({t:'bar',a:T(...a),b:T(...b),w,i,oi,p:o.p,qty:Math.max(1,o.qty||1),curve:cid,src,L}),chain=pts=>{cid=cid||++CURVE;for(let k=1;k<pts.length;k++)line(pts[k-1],pts[k]);cid=null};
   if(o.kind==='seg')line([0,H/2],[W,H/2]);
   else if(o.kind==='frame'){L=W*sx/PX+ins;line([0,0],[W,0]);line([W,H],[0,H]);L=H*sy/PX+ins;line([W,0],[W,H]);line([0,H],[0,0]);L=null}
   else if(o.kind==='bars'){const v=o.dir==='v',span=v?o.bw:o.bh,n=barN(span/PX,o.sp),pitch=span/(n+1);for(let k=1;k<=n;k++)v?line([pitch*k,0],[pitch*k,o.bh]):line([0,pitch*k],[o.bw,pitch*k])}
   else if(o.kind==='arc'){const r=o.r*PX,t=o.sweep*Math.PI/180,pts=[];for(let k=0;k<=32;k++){const a=Math.PI-t*k/32;pts.push([r*Math.cos(a),-r*Math.sin(a)])}const mx=Math.min(...pts.map(p=>p[0])),my=Math.min(...pts.map(p=>p[1]));chain(pts.map(p=>[p[0]-mx,p[1]-my]))}
   else if(o.kind==='vol'){const pts=volPts(o.r0,o.r1,o.turns).map(p=>[p[0]*PX,p[1]*PX]),mx=Math.min(...pts.map(p=>p[0])),my=Math.min(...pts.map(p=>p[1]));chain(pts.map(p=>[p[0]-mx,p[1]-my]))}
   else if(o.kind==='sheet'||o.kind==='cat'){const c=T(W/2,H/2),u=T(1,0),o0=T(0,0),vv=T(0,1);const U=[u[0]-o0[0],u[1]-o0[1],u[2]-o0[2]],VV=[vv[0]-o0[0],vv[1]-o0[1],vv[2]-o0[2]];
-   if(o.kind==='sheet')ex.push({t:'plate',c,U,V:VV,w:W*(o.scaleX||1)/PX,h:H*(o.scaleY||1)/PX,e:Math.max(SH[o.p]?SH[o.p].e/10:.2,.6),i,ghost:true});
+   if(o.kind==='sheet')ex.push({t:'plate',c,U,V:VV,w:W*(o.scaleX||1)/PX,h:H*(o.scaleY||1)/PX,e:Math.max(SH[o.p]?SH[o.p].e/10:.2,.6),i,oi,ghost:true});
    else{const cs=C[o.catId]||{shape:'ball',s:5},sz=cs.s;
-    if(cs.shape==='ball')ex.push({t:'ball',c,r:sz/2,i});
-    else if(cs.shape==='ring')ex.push({t:'ring',c,U,V:VV,r:sz/2,i});
+    if(cs.shape==='ball')ex.push({t:'ball',c,r:sz/2,i,oi});
+    else if(cs.shape==='ring')ex.push({t:'ring',c,U,V:VV,r:sz/2,i,oi});
     else if(cs.shape==='spiral'){cid='cat';const pts=volPts(.8,sz/2,1.5).map(p=>[W/2+p[0]*PX,H/2+p[1]*PX]);chain(pts)}
-    else ex.push({t:'plate',c,U,V:VV,w:W/PX,h:H/PX,e:1,i})}}}}
+    else ex.push({t:'plate',c,U,V:VV,w:W/PX,h:H/PX,e:1,i,oi})}}})}
 function frameCam(){orbit.r=Math.max(M.W,M.H,M.D)*2.8}
 // Lista para el cálculo. Dos hierros rectos con el mismo perfil en el mismo lugar (arista de caja + borde de un marco dibujado) se cuentan una vez.
 let BOMINFO={dups:0,warn:[],bySrc:[]};
+// Travesaño: barra a lo largo de un eje (x ancho, y alto, z profundo) ubicada por las otras dos coordenadas. Migra el formato viejo plano+dir.
+function normBar(q){if(q.axis)return q;const pl=PLANES[q.plane||'xy'];q.axis=q.dir==='v'?pl.v:pl.u;q.pos={x:M.W/2,y:M.H/2,z:M.D/2};q.pos[pl.n]=q.at||0;q.pos[q.dir==='v'?pl.u:pl.v]=q.off||0;return q}
 function objects3d(){const {ms,sh,ex}=members(),seen=new Map(),geo=new Map(),curves=new Map(),out=[],warn=[];let dups=0;
  const r=v=>v.map(x=>Math.round(x*2)/2).join(','),gk=(a,b)=>{const A=r(a),B=r(b);return A<B?A+'|'+B:B+'|'+A},len=(a,b)=>Math.hypot(b[0]-a[0],b[1]-a[1],b[2]-a[2]);
  const addS=(p,a,b,qty,src,L)=>{if(len(a,b)<.05)return;const g=gk(a,b),k=p+'|'+g;if(seen.has(k)){dups++;seen.get(k).qty=Math.max(seen.get(k).qty,qty);return}
@@ -677,14 +680,14 @@ const ray=new THREE.Raycaster(),mouse=new THREE.Vector2();
 function hex(v){return new THREE.Color(css(v))}
 function center(){return new THREE.Vector3(M.W/2,M.H/2,M.D/2)}
 function buildScene(){scene.remove(group);group=new THREE.Group();const st=hex('--steel'),acc=hex('--accent'),{ms,sh,ex}=members();
- const X=new THREE.Vector3(1,0,0),Z=new THREE.Vector3(0,0,1),mat=(i,ghost)=>new THREE.MeshLambertMaterial({color:i===sel3?acc:st,transparent:!!ghost,opacity:ghost?.75:1});
- const bar=(a,b,w,i)=>{const A=new THREE.Vector3(...a),B=new THREE.Vector3(...b),len=A.distanceTo(B);if(len<.05)return;const mesh=new THREE.Mesh(new THREE.BoxGeometry(len,w,w),mat(i));mesh.position.copy(A.clone().add(B).multiplyScalar(.5));mesh.quaternion.setFromUnitVectors(X,B.clone().sub(A).normalize());mesh.userData.i=i;group.add(mesh)};
- for(const e of ex){if(e.t==='bar')bar(e.a,e.b,e.w,e.i);
-  else if(e.t==='ball'){const m=new THREE.Mesh(new THREE.SphereGeometry(e.r,16,12),mat(e.i));m.position.set(...e.c);m.userData.i=e.i;group.add(m)}
+ const X=new THREE.Vector3(1,0,0),Z=new THREE.Vector3(0,0,1),hot=(i,oi)=>i===sel3&&(selObj?selObj.oi===oi:true),mat=(i,ghost,oi)=>new THREE.MeshLambertMaterial({color:hot(i,oi)?acc:st,transparent:!!ghost,opacity:ghost?.75:1});
+ const bar=(a,b,w,i,oi)=>{const A=new THREE.Vector3(...a),B=new THREE.Vector3(...b),len=A.distanceTo(B);if(len<.05)return;const mesh=new THREE.Mesh(new THREE.BoxGeometry(len,w,w),mat(i,false,oi));mesh.position.copy(A.clone().add(B).multiplyScalar(.5));mesh.quaternion.setFromUnitVectors(X,B.clone().sub(A).normalize());mesh.userData.i=i;mesh.userData.oi=oi;group.add(mesh)};
+ for(const e of ex){if(e.t==='bar')bar(e.a,e.b,e.w,e.i,e.oi);
+  else if(e.t==='ball'){const m=new THREE.Mesh(new THREE.SphereGeometry(e.r,16,12),mat(e.i,false,e.oi));m.position.set(...e.c);m.userData.i=e.i;m.userData.oi=e.oi;group.add(m)}
   else{const U=new THREE.Vector3(...e.U).normalize(),Vv=new THREE.Vector3(...e.V).normalize(),N=U.clone().cross(Vv).normalize();
-   const m=e.t==='ring'?new THREE.Mesh(new THREE.TorusGeometry(e.r,Math.max(.4,e.r/5),8,24),mat(e.i)):new THREE.Mesh(new THREE.BoxGeometry(e.w,e.h,e.e),mat(e.i,e.ghost));
+   const m=e.t==='ring'?new THREE.Mesh(new THREE.TorusGeometry(e.r,Math.max(.4,e.r/5),8,24),mat(e.i,false,e.oi)):new THREE.Mesh(new THREE.BoxGeometry(e.w,e.h,e.e),mat(e.i,e.ghost,e.oi));
    if(e.t==='ring')m.quaternion.setFromUnitVectors(Z,N);else m.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(U,Vv,N));
-   m.position.set(...e.c);m.userData.i=e.i;group.add(m)}}
+   m.position.set(...e.c);m.userData.i=e.i;m.userData.oi=e.oi;group.add(m)}}
  for(const m of ms){const w=Math.max(P[m.p].w,.8),g=new THREE.BoxGeometry(m.len,w,w),mesh=new THREE.Mesh(g,new THREE.MeshLambertMaterial({color:m.i===sel3?acc:st}));
   const a=new THREE.Vector3(...m.a),b=new THREE.Vector3(...m.b),d=b.clone().sub(a).normalize();mesh.position.copy(a.clone().add(b).multiplyScalar(.5));mesh.quaternion.setFromUnitVectors(X,d);mesh.userData.i=m.i;group.add(mesh)}
  for(const x of sh){const e=SH[x.p].e/10,dims={x:0,y:0,z:0};dims[x.pl.u]=x.w;dims[x.pl.v]=x.h;dims[x.pl.n]=Math.max(e,.6);
@@ -722,35 +725,54 @@ function draw3(){if(!renderer)return;size3();const w=c3.width,h=c3.height;if(!w|
 let d3=null;
 function pick(e){const r=c3.getBoundingClientRect(),mw=mainW(),px=e.clientX-r.left,py=e.clientY-r.top;if(px>mw)return null;
  mouse.set((px/mw)*2-1,-(py/c3.height)*2+1);ray.setFromCamera(mouse,cam);return ray.intersectObjects(group.children).find(h=>h.object.userData.i!==null)||null}
-// Eje sobre el que se mueve una parte: la normal de su cara (at), o el eje transversal dentro de la cara para un travesaño (off).
-function dragAxis(q){const pl=PLANES[q.plane],ax=q.type==='bar'?(q.dir==='u'?pl.v:pl.u):pl.n,v=new THREE.Vector3();v[ax]=1;return {v,key:q.type==='bar'?'off':'at',max:M[AXS[ax]]}}
+// Qué se puede mover y por dónde. Cada candidato: vector de avance, valor actual, setter y tope.
+function unit(ax){const v=new THREE.Vector3();v[ax]=1;return v}
+function cands(hit){const i=hit.object.userData.i;
+ if(i>=0){const q=M.parts[i];
+  if(q.type==='bar'){normBar(q);return 'xyz'.split('').filter(a=>a!==q.axis).map(a=>({v:unit(a),get:()=>q.pos[a],set:x=>{q.pos[a]=x},max:M[AXS[a]],ax:a}))}
+  const pl=PLANES[q.plane];return [{v:unit(pl.n),get:()=>q.at,set:x=>{q.at=x},max:M[AXS[pl.n]],ax:pl.n}]}
+ if(i<=-2&&hit.object.userData.oi!=null){const k=-2-i,f=FACES[k],pl=PLANES[f.pl],oi=hit.object.userData.oi,v=unit(pl.n).multiplyScalar(-f.out);
+  return [{v,get:()=>faceDepth(k,oi),set:x=>setFaceDepth(k,oi,x),max:M[AXS[pl.n]],ax:pl.n,face:true}]}
+ return []}
+function faceDepth(k,oi){const o=viewObjs(FACES[k].id)[oi];return o?(o.depth||0):0}
+// Cambia "hacia adentro" de un objeto de una cara: en el canvas vivo si es la cara abierta, si no en su JSON guardado.
+function setFaceDepth(k,oi,v){v=Math.max(0,v);if(k===cur){const o=real()[oi];if(o)o.depth=v;return}
+ try{const j=JSON.parse(views[k].json);if(j.objects[oi]){j.objects[oi].depth=v;views[k].json=JSON.stringify(j)}}catch(e){}}
 function mainW(){return c3.parentElement===$('mini3')?c3.width:Math.floor(c3.width*.68)}
 function toPx(p){const n=p.clone().project(cam),mw=mainW();return [(n.x+1)/2*mw,(1-n.y)/2*c3.height]}
-c3.addEventListener('pointerdown',e=>{c3.setPointerCapture(e.pointerId);d3={x:e.clientX,y:e.clientY,moved:0,part:null};const hit=pick(e);
- if(hit&&hit.object.userData.i<=-2){const i=hit.object.userData.i;if(sel3!==i){sel3=i;buildScene();renderPlist()}}
- if(hit&&hit.object.userData.i>=0){const i=hit.object.userData.i,q=M.parts[i],ax=dragAxis(q),p0=hit.point.clone(),a=toPx(p0),b=toPx(p0.clone().add(ax.v.clone().multiplyScalar(10)));
-  const sx=(b[0]-a[0])/10,sy=(b[1]-a[1])/10,n2=sx*sx+sy*sy;d3.part={i,q,ax,sx,sy,n2,start:q[ax.key],x0:e.clientX,y0:e.clientY};if(sel3!==i){sel3=i;buildScene();renderPlist()}}});
-c3.addEventListener('pointermove',e=>{if(!d3){const h=pick(e);c3.style.cursor=h&&h.object.userData.i>=0?'grab':(h&&h.object.userData.i<=-2?'pointer':'default');return}
+c3.addEventListener('pointerdown',e=>{c3.setPointerCapture(e.pointerId);d3={x:e.clientX,y:e.clientY,moved:0,part:null};const hit=pick(e);if(!hit)return;
+ const i=hit.object.userData.i,oi=hit.object.userData.oi;
+ if(i<=-2){const ns={oi,k:-2-i};if(sel3!==i||!selObj||selObj.oi!==oi){sel3=i;selObj=ns;buildScene();renderPlist()}}
+ else if(i>=0){selObj=null;if(sel3!==i){sel3=i;buildScene();renderPlist()}}
+ const cs=cands(hit);if(!cs.length)return;const p0=hit.point.clone(),a=toPx(p0);
+ cs.forEach(c=>{const b=toPx(p0.clone().add(c.v.clone().multiplyScalar(10)));c.sx=(b[0]-a[0])/10;c.sy=(b[1]-a[1])/10;c.n2=c.sx*c.sx+c.sy*c.sy;c.start=c.get()});
+ d3.part={cs,pick:null,x0:e.clientX,y0:e.clientY}});
+c3.addEventListener('pointermove',e=>{if(!d3){const h=pick(e);c3.style.cursor=h&&(h.object.userData.i>=0||h.object.userData.oi!=null)?'grab':'default';return}
  const dx=e.clientX-d3.x,dy=e.clientY-d3.y;if(Math.abs(dx)+Math.abs(dy)>3)d3.moved=1;
- if(d3.part){const p=d3.part;if(p.n2<1e-6)return;const d=((e.clientX-p.x0)*p.sx+(e.clientY-p.y0)*p.sy)/p.n2,st=S.snap3||1;
-  const v=Math.min(p.ax.max,Math.max(0,Math.round((p.start+d)/st)*st));if(v!==p.q[p.ax.key]){p.q[p.ax.key]=v;buildScene();c3.style.cursor='grabbing'}return}
+ if(d3.part){const p=d3.part,mx=e.clientX-p.x0,my=e.clientY-p.y0;if(!p.pick){if(Math.abs(mx)+Math.abs(my)<4)return;
+   // elige el eje cuya dirección en pantalla se parece más al gesto
+   p.pick=p.cs.reduce((b,c)=>{const sc=c.n2<1e-6?-1:Math.abs(mx*c.sx+my*c.sy)/Math.sqrt(c.n2);return !b||sc>b.sc?{c,sc}:b},null).c}
+  const c=p.pick;if(c.n2<1e-6)return;const d=(mx*c.sx+my*c.sy)/c.n2,st=S.snap3||1,v=Math.min(c.max,Math.max(0,Math.round((c.start+d)/st)*st));
+  if(v!==c.get()){c.set(v);buildScene();c3.style.cursor='grabbing'}return}
  orbit.th-=dx*.01;orbit.ph=Math.min(Math.PI-.15,Math.max(.15,orbit.ph-dy*.01));d3.x=e.clientX;d3.y=e.clientY});
 c3.addEventListener('pointerup',e=>{if(!d3)return;const {moved,part}=d3;d3=null;c3.style.cursor='default';
- if(part){if(moved)update3();return}
- if(moved)return;const hit=pick(e);sel3=hit?hit.object.userData.i:null;buildScene();renderPlist()});
+ if(part){if(moved){if(part.pick&&part.pick.face){if(selObj&&selObj.k===cur)after();else persist()}update3()}return}
+ if(moved)return;const hit=pick(e);if(!hit){sel3=null;selObj=null;buildScene();renderPlist()}});
 let hist3=[];
 function pushHist(){const j=JSON.stringify(M);if(hist3[hist3.length-1]!==j){hist3.push(j);if(hist3.length>60)hist3.shift()}}
 function undo3(){if(hist3.length<2)return;hist3.pop();M=JSON.parse(hist3[hist3.length-1]);sel3=null;renderForm();buildScene();renderPlist();renderBom();saveM()}
 $('undo3').addEventListener('click',undo3);
 $('btnDims').addEventListener('click',()=>{S.dims=S.dims===false?true:false;$('btnDims').classList.toggle('on',S.dims!==false);saveCfg()});
 $('btnDims').classList.toggle('on',S.dims!==false);
-function del3(){if(sel3===null||sel3<0)return;M.parts.splice(sel3,1);sel3=null;update3()}
+function del3(){if(sel3===null||sel3<0)return;M.parts.splice(sel3,1);sel3=null;selObj=null;update3()}
 $('del3').addEventListener('click',del3);
 document.addEventListener('keydown',e=>{if(S.mode!=='3d'||/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName))return;
  if((e.ctrlKey||e.metaKey)&&e.key==='z'){e.preventDefault();undo3();return}
  if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();del3();return}
- if(sel3===null||sel3<0||!/^Arrow/.test(e.key))return;e.preventDefault();const q=M.parts[sel3],ax=dragAxis(q),st=(S.snap3||1)*(e.shiftKey?10:1),dir=(e.key==='ArrowUp'||e.key==='ArrowRight')?1:-1;
- q[ax.key]=Math.min(ax.max,Math.max(0,q[ax.key]+dir*st));update3()});
+ if(!/^Arrow/.test(e.key))return;const st=(S.snap3||1)*(e.shiftKey?10:1),dir=(e.key==='ArrowUp'||e.key==='ArrowRight')?1:-1,vert=e.key==='ArrowUp'||e.key==='ArrowDown';
+ if(selObj){e.preventDefault();const f=FACES[selObj.k],v=faceDepth(selObj.k,selObj.oi);setFaceDepth(selObj.k,selObj.oi,Math.min(M[AXS[PLANES[f.pl].n]],Math.max(0,v+(vert?dir:-dir)*st)));if(selObj.k===cur)after();else persist();update3();return}
+ if(sel3===null||sel3<0)return;e.preventDefault();let cs=cands({object:{userData:{i:sel3}}});if(!cs.length)return;
+ let c=cs.length===1?cs[0]:(vert?(cs.find(x=>x.ax==='y')||cs[1]):(cs.find(x=>x.ax!=='y')||cs[0]));c.set(Math.min(c.max,Math.max(0,c.get()+dir*st)));update3()});
 c3.addEventListener('dblclick',e=>{const h=pick(e);if(h&&h.object.userData.i<=-2){const k=-2-h.object.userData.i;setMode('2d');if(cur!==k)switchView(k)}});
 c3.addEventListener('wheel',e=>{e.preventDefault();orbit.r=Math.min(3000,Math.max(40,orbit.r*Math.pow(1.001,e.deltaY)))},{passive:false});
 
@@ -765,19 +787,25 @@ const TYPES={bars:'Grilla / barrotes',bar:'Travesaño',frame:'Marco / estante',s
 function renderPlist(){const L=$('plist');
  L.innerHTML=M.parts.length?M.parts.map((q,i)=>{const pl=PLANES[q.plane],U=AXS[pl.u],V=AXS[pl.v];
   const prof=q.type==='sheet'?`<select data-k="sheet">${SHEETS.map(x=>`<option value="${x.id}"${x.id===q.sheet?' selected':''}>${x.name}</option>`).join('')}</select>`:`<select data-k="p">${PROFILES.map(p=>`<option value="${p.id}"${p.id===q.p?' selected':''}>${p.name}</option>`).join('')}</select>`;
-  const dir=(q.type==='bars'||q.type==='bar')?`<select data-k="dir"><option value="u"${q.dir==='u'?' selected':''}>a lo ${U==='W'?'ancho':U==='H'?'alto':'profundo'}</option><option value="v"${q.dir==='v'?' selected':''}>a lo ${V==='W'?'ancho':V==='H'?'alto':'profundo'}</option></select>`:'';
-  const extra=q.type==='bars'?`<input data-k="sp" type="number" value="${q.sp}" title="paso cm"><span class="muted">cm de paso</span>`:q.type==='bar'?`<input data-k="off" type="number" value="${q.off}" title="posición cm"><span class="muted">cm desde el borde</span>`:'';
-  return `<div class="part${i===sel3?' on':''}" data-i="${i}"><b style="font-family:var(--font-d)">${TYPES[q.type]}</b><button class="x" data-del="${i}" title="Quitar">×</button>
+  const dir=(q.type==='bars')?`<select data-k="dir"><option value="u"${q.dir==='u'?' selected':''}>a lo ${U==='W'?'ancho':U==='H'?'alto':'profundo'}</option><option value="v"${q.dir==='v'?' selected':''}>a lo ${V==='W'?'ancho':V==='H'?'alto':'profundo'}</option></select>`:'';
+  const extra=q.type==='bars'?`<input data-k="sp" type="number" value="${q.sp}" title="paso cm"><span class="muted">cm de paso</span>`:'';
+  if(q.type==='bar'){normBar(q);const AXN={x:'a lo ancho',y:'a lo alto',z:'a lo profundo'},PN={x:'desde la izquierda',y:'desde el piso',z:'desde el fondo'};const free='xyz'.split('').filter(a=>a!==q.axis);
+   return `<div class="part${i===sel3&&!selObj?' on':''}" data-i="${i}"><b style="font-family:var(--font-d)">Travesaño</b><button class="x" data-del="${i}" title="Quitar">×</button>
+   <span class="lab">eje y posición</span><select data-k="axis">${'xyz'.split('').map(a=>`<option value="${a}"${a===q.axis?' selected':''}>${AXN[a]}</option>`).join('')}</select>${free.map(a=>`<input data-k="pos.${a}" type="number" value="${Math.round(q.pos[a])}" title="${PN[a]}"><span class="muted">${PN[a]}</span>`).join('')}
+   <span class="lab">material</span>${prof}<span class="muted" style="width:100%">Arrastralo en el 3D en cualquiera de las dos direcciones.</span></div>`}
+  return `<div class="part${i===sel3&&!selObj?' on':''}" data-i="${i}"><b style="font-family:var(--font-d)">${TYPES[q.type]}</b><button class="x" data-del="${i}" title="Quitar">×</button>
    <span class="lab">cara y posición</span><select data-k="plane">${Object.entries(PLANES).map(([k,v])=>`<option value="${k}"${k===q.plane?' selected':''}>${v.name}</option>`).join('')}</select><input data-k="at" type="number" value="${q.at}" title="posición sobre la normal, cm"><span class="muted">cm</span>
    <span class="lab">material</span>${prof}${dir}${extra}</div>`}).join(''):'<div class="muted">Sin partes todavía. Agregá una grilla, un travesaño, un estante o chapa.</div>';
- L.querySelectorAll('.part').forEach(row=>{const i=+row.dataset.i;row.addEventListener('click',e=>{if(e.target.tagName==='BUTTON')return;if(sel3!==i){sel3=i;buildScene();L.querySelectorAll('.part').forEach(r=>r.classList.toggle('on',+r.dataset.i===i))}});
+ L.querySelectorAll('.part[data-i]').forEach(row=>{const i=+row.dataset.i;row.addEventListener('click',e=>{if(e.target.tagName==='BUTTON')return;if(sel3!==i||selObj){sel3=i;selObj=null;buildScene();L.querySelectorAll('.part[data-i]').forEach(r=>r.classList.toggle('on',+r.dataset.i===i))}});
   row.querySelectorAll('[data-k]').forEach(inp=>inp.addEventListener('change',()=>{const q=M.parts[i],k=inp.dataset.k,v=inp.type==='number'?+inp.value:inp.value;
-   if(k==='plane'){q.plane=v;q.at=M[AXS[PLANES[v].n]];if(v==='xz')q.at=M.H}else if(k==='at'){q.at=Math.min(M[AXS[PLANES[q.plane].n]],Math.max(0,v))}else if(k==='sp'){q.sp=Math.max(.5,v)}else if(k==='off'){q.off=Math.max(0,v)}else q[k]=v;update3()}))});
+   if(k==='axis'){normBar(q);q.axis=v}else if(k.startsWith('pos.')){normBar(q);q.pos[k.slice(4)]=Math.max(0,v)}else if(k==='plane'){q.plane=v;q.at=M[AXS[PLANES[v].n]];if(v==='xz')q.at=M.H}else if(k==='at'){q.at=Math.min(M[AXS[PLANES[q.plane].n]],Math.max(0,v))}else if(k==='sp'){q.sp=Math.max(.5,v)}else if(k==='off'){q.off=Math.max(0,v)}else q[k]=v;update3()}))});
  L.querySelectorAll('[data-del]').forEach(b=>b.addEventListener('click',()=>{M.parts.splice(+b.dataset.del,1);sel3=null;update3()}));
- $('facelist').innerHTML='<span class="lab muted">Caras dibujadas en 2D</span>'+FACES.map((f,k)=>{const n=viewObjs(f.id).filter(o=>!o.ref).length;return `<button data-face="${k}" class="${sel3===-2-k?'on':''}" style="font-size:12px;padding:4px 8px">${f.name}: ${n?n+' partes':'vacía'} · editar</button>`}).join('');
+ $('facelist').innerHTML='<span class="lab muted">Caras dibujadas en 2D</span>'+FACES.map((f,k)=>{const n=viewObjs(f.id).filter(o=>!o.ref).length;return `<button data-face="${k}" class="${sel3===-2-k?'on':''}" style="font-size:12px;padding:4px 8px">${f.name}: ${n?n+' partes':'vacía'} · editar</button>`}).join('')
+  +(selObj?`<div class="part on"><b style="font-family:var(--font-d)">Pieza de ${FACES[selObj.k].name}</b><span class="lab">hacia adentro de la caja</span><input id="fsDepth" type="number" value="${Math.round(faceDepth(selObj.k,selObj.oi))}"><span class="muted">cm · o arrastrala en el 3D</span></div>`:'');
+ const fd=$('fsDepth');if(fd)fd.addEventListener('change',()=>{setFaceDepth(selObj.k,selObj.oi,+fd.value);if(selObj.k===cur)after();else persist();update3()});
  $('facelist').querySelectorAll('[data-face]').forEach(b=>b.addEventListener('click',()=>{const k=+b.dataset.face;setMode('2d');if(cur!==k)switchView(k)}))}
 function addPart(type){const q={type,plane:'xz',at:M.H,p:$('curProfile').value,sheet:'ch2',dir:'u',sp:3,off:Math.round(M.H/2)};
- if(type==='bar'){q.plane='xy';q.at=0;q.off=Math.round(M.H*2/3)}if(type==='sheet'||type==='frame'){q.at=Math.round(M.H*2/3)}
+ if(type==='bar'){q.axis='x';q.pos={x:Math.round(M.W/2),y:Math.round(M.H/3),z:Math.round(M.D/2)}}if(type==='sheet'||type==='frame'){q.at=Math.round(M.H*2/3)}
  M.parts.push(q);sel3=M.parts.length-1;update3()}
 document.querySelectorAll('[data-padd]').forEach(b=>b.addEventListener('click',()=>addPart(b.dataset.padd)));
 // ===== Modelos base: caja + partes interiores + caras dibujadas. Se eligen de la galería y se retocan. =====
@@ -804,7 +832,7 @@ const TPL=[
   faces:{frente:[F('sheet',{p:'ch16',w:50,h:35})],fondo:[F('sheet',{p:'ch16',w:50,h:35})],izq:[F('sheet',{p:'ch16',w:50,h:35})],der:[F('sheet',{p:'ch16',w:50,h:35})]}},
 ];
 function faceJson(items){const objs=items.map(it=>{const o=mk(it.k,it.o);const ins=(o.inset||0)*PX;o.set({left:it.x*PX+ins,top:it.y*PX+ins});if(it.o.angle)o.set('angle',it.o.angle);if(it.qty)o.qty=it.qty;o.setCoords();return o.toObject(PROPS)});return JSON.stringify({version:fabric.version,objects:objs})}
-async function applyTpl(t){M=JSON.parse(JSON.stringify(t.M));sel3=null;const fj=tplFaces(t);views.forEach(v=>v.json=fj[v.id]);cur=0;undo=[];persist();renderForm();frameCam();
+async function applyTpl(t){M=JSON.parse(JSON.stringify(t.M));sel3=null;selObj=null;const fj=tplFaces(t);views.forEach(v=>v.json=fj[v.id]);cur=0;undo=[];persist();renderForm();frameCam();
  await load(views[0].json);undo=[views[0].json||snapshot()];renderTabs();update3();fitView()}
 let thumbsDone=false;
 function renderGal(){$('galGrid').innerHTML=TPL.map(t=>`<button class="card" data-tpl="${t.id}"><img id="th-${t.id}" alt=""><b>${t.name}</b><span>${t.desc}</span></button>`).join('');
@@ -847,7 +875,7 @@ function loadPR(){try{const j=JSON.parse(localStorage.getItem('herreria.projects
 function savePr(){const p=curPr();if(!p)return;p.M=M;p.faces=Object.fromEntries(views.map(v=>[v.id,v.json]));p.cur=cur;p.updated=Date.now();p.kg=LAST.kg;p.total=LAST.total;
  try{localStorage.setItem('herreria.projects',JSON.stringify(PR))}catch(e){$('estStatus').textContent='No se pudo guardar: el navegador no deja usar almacenamiento.'}}
 function newPr(name){const p={id:uid(),name:name||('Proyecto '+(PR.list.length+1)),updated:Date.now(),M:JSON.parse(JSON.stringify(M)),faces:{},cur:0};PR.list.unshift(p);PR.cur=p.id;$('prName').value=p.name;return p}
-async function openPr(id){const p=PR.list.find(x=>x.id===id);if(!p)return;PR.cur=id;M=JSON.parse(JSON.stringify(p.M));sel3=null;views.forEach(v=>v.json=(p.faces&&p.faces[v.id])||null);cur=Math.min(p.cur||0,views.length-1);
+async function openPr(id){const p=PR.list.find(x=>x.id===id);if(!p)return;PR.cur=id;M=JSON.parse(JSON.stringify(p.M));sel3=null;selObj=null;views.forEach(v=>v.json=(p.faces&&p.faces[v.id])||null);cur=Math.min(p.cur||0,views.length-1);
  $('prName').value=p.name;renderForm();frameCam();await load(views[cur].json);undo=[views[cur].json||snapshot()];hist3=[];renderTabs();update3();fitView()}
 $('prName').addEventListener('change',e=>{const p=curPr();if(p){p.name=e.target.value.trim()||p.name;e.target.value=p.name;savePr()}});
 function fecha(t){return new Date(t).toLocaleDateString('es-AR',{day:'numeric',month:'short'})}
