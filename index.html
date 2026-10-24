@@ -89,6 +89,7 @@ th{font-family:var(--font-d);font-weight:600;letter-spacing:.04em;text-transform
 .v3label{position:absolute;left:68%;width:32%;padding:4px 8px;font:600 12px var(--font-d);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);pointer-events:none;border-left:1px solid var(--line);border-top:1px solid var(--line);box-sizing:border-box;height:33.34%}
 .v3dim{position:absolute;left:8px;top:6px;font:700 14px var(--font-d);color:var(--fg);pointer-events:none}
 .v3hint{position:absolute;left:8px;bottom:6px;font-size:12px;color:var(--muted);pointer-events:none}
+.cota{position:absolute;transform:translate(-50%,-50%);background:var(--fg);color:var(--bg);font:600 12px var(--font-d);letter-spacing:.03em;padding:2px 8px;border-radius:10px;pointer-events:none;white-space:nowrap;display:none}
 .part{display:flex;flex-wrap:wrap;gap:4px;align-items:center;padding:6px;border:1px solid var(--line);border-radius:4px;background:var(--panel)}
 .part.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent) inset}
 .part select,.part input{padding:3px 5px;font-size:12px}
@@ -171,9 +172,9 @@ th{font-family:var(--font-d);font-weight:600;letter-spacing:.04em;text-transform
   <aside class="parts" id="parts3d" hidden>
     <h2>Empezar</h2>
     <button data-gal>Modelos base</button>
-    <h2>Caja base</h2>
+    <h2>Caja base (medidas exteriores)</h2>
     <div class="box3"><input id="mW" type="number" title="Ancho cm"><input id="mH" type="number" title="Alto cm"><input id="mD" type="number" title="Profundidad cm"></div>
-    <span class="muted">ancho · alto · profundidad (cm)</span>
+    <span class="muted">ancho · alto · profundidad (cm), de borde a borde del hierro. Alto total hasta el piso.</span>
     <label>Perfil de la caja<select id="mP"></select></label>
     <label class="chk"><input type="checkbox" id="eTop"> aristas de arriba</label>
     <label class="chk"><input type="checkbox" id="eBot"> aristas de abajo</label>
@@ -191,12 +192,13 @@ th{font-family:var(--font-d);font-weight:600;letter-spacing:.04em;text-transform
   <section class="stage" id="stage3d" hidden>
     <div class="steps"><span><b>1</b> Definí la caja o partí de una plantilla</span><span><b>2</b> Agregá partes interiores: grillas, travesaños, estantes, chapa</span><span><b>3</b> Las caras exteriores se dibujan en el modo 2D y aparecen acá. Nada se cuenta dos veces</span></div>
     <div class="wrap3" id="wrap3"><canvas id="c3"></canvas>
-      <div class="v3dim" id="v3dim"></div><div class="v3hint">Arrastrá el fondo para girar · rueda para acercar · arrastrá una parte para moverla</div>
+      <div class="v3dim" id="v3dim"></div><div class="v3hint">Arrastrá el fondo para girar · rueda para acercar · arrastrá una parte para moverla · medidas exteriores</div>
       <div class="v3label" style="top:0">Frente</div><div class="v3label" style="top:33.33%">Lateral</div><div class="v3label" style="top:66.66%">Planta</div>
     </div>
     <div class="viewbar">
       <button id="undo3">Deshacer (Ctrl+Z)</button>
       <button id="del3">Quitar parte (Supr)</button>
+      <button id="btnDims" class="on">Medidas</button>
       <span class="muted">Arrastrá una parte en el 3D para moverla · flechas del teclado la mueven de a <span id="snap3">1</span> cm</span>
     </div>
   </section>
@@ -292,7 +294,7 @@ function barN(span,sp){return Math.max(1,Math.round(span/sp)-1)}
 // ref = "ya contado en otra vista": se dibuja pero no suma. qty = piezas iguales superpuestas en esta vista.
 function pieces(o){if(o.ref)return [];const sx=o.scaleX||1,sy=o.scaleY||1,q=Math.max(1,o.qty||1);let r=[];
  if(o.kind==='seg')r=[[o.p,o.width*sx/PX]];
- if(o.kind==='frame'){const w=o.width*sx/PX,h=o.height*sy/PX;r=[[o.p,w],[o.p,w],[o.p,h],[o.p,h]]}
+ if(o.kind==='frame'){const ins=2*(o.inset||0),w=o.width*sx/PX+ins,h=o.height*sy/PX+ins;r=[[o.p,w],[o.p,w],[o.p,h],[o.p,h]]}
  if(o.kind==='bars'){const w=o.bw*sx/PX,h=o.bh*sy/PX,v=o.dir==='v';r=Array(barN(v?w:h,o.sp)).fill([o.p,v?h:w])}
  if(o.kind==='arc')r=[[o.p,o.r*sx*o.sweep*Math.PI/180]];
  if(o.kind==='vol')r=[[o.p,polyLen(volPts(o.r0,o.r1,o.turns))*sx]];
@@ -322,7 +324,7 @@ const num=(n,d=1)=>n.toLocaleString('es-AR',{maximumFractionDigits:d});
 const css=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 let S={snap:5,labor:100,extras:15000,prices:{},catPrices:{},sheetPrices:{},mode:'2d'};
 try{Object.assign(S,JSON.parse(localStorage.getItem('herreria.cfg'))||{})}catch(e){}
-const PROPS=['kind','p','sp','dir','sweep','turns','r','r0','r1','bw','bh','catId','qty','ref','lockScalingX','lockScalingY','perPixelTargetFind'];
+const PROPS=['kind','p','sp','dir','sweep','turns','r','r0','r1','bw','bh','catId','qty','ref','inset','lockScalingX','lockScalingY','perPixelTargetFind'];
 
 // ---- plano ----
 const canvas=new fabric.Canvas('c',{preserveObjectStacking:true,uniformScaling:false,selectionColor:css('--sel'),selectionBorderColor:css('--accent')});
@@ -339,7 +341,7 @@ function snapPx(){return S.snap*PX}
 // ---- fábrica de partes (medidas en cm) ----
 function mk(kind,opt={}){const st=css('--steel'),p=opt.p||$('curProfile').value,w=Math.max((P[p]||P.cu12).w*PX,2),[FW,FH]=FACES[cur].dims();let o;
  if(kind==='seg')o=new fabric.Rect({kind,p,width:(opt.len||FW)*PX,height:w,fill:st,strokeWidth:0,lockScalingY:true});
- if(kind==='frame')o=new fabric.Rect({kind,p,width:(opt.w||FW)*PX,height:(opt.h||FH)*PX,fill:'transparent',stroke:st,strokeWidth:w,strokeUniform:true,perPixelTargetFind:true});
+ if(kind==='frame'){const ins=P[p].w/2;o=new fabric.Rect({kind,p,inset:ins,width:((opt.w||FW)-2*ins)*PX,height:((opt.h||FH)-2*ins)*PX,fill:'transparent',stroke:st,strokeWidth:w,strokeUniform:true,perPixelTargetFind:true})}
  if(kind==='bars')o=mkBars({p,bw:(opt.w||FW)*PX,bh:(opt.h||FH)*PX,sp:opt.sp||12,dir:opt.dir||'v'});
  if(kind==='arc')o=mkArc({p,r:opt.r||15,sweep:opt.sweep||180});
  if(kind==='vol')o=mkVol({p,r0:1.5,r1:opt.r1||10,turns:opt.turns||1.5});
@@ -367,7 +369,8 @@ function decorate(o){const k=o.kind;o.set('opacity',o.ref?.35:1);
  if(k==='cat')o.setControlsVisibility({mt:false,mb:false,ml:false,mr:false,tl:false,tr:false,bl:false,br:false});
  return o}
 function add(kind,opt={},pos){const o=mk(kind,opt);const g=snapPx();
- if(pos){o.set({left:pos.x*PX,top:pos.y*PX})}else if(kind==='frame'||kind==='bars'||kind==='sheet'){o.set({left:0,top:0})}else{const c=canvas.getVpCenter();o.set({left:Math.round((c.x-o.width/2)/g)*g,top:Math.round((c.y-o.height/2)/g)*g})}
+ const ins=(o.inset||0)*PX;
+ if(pos){o.set({left:pos.x*PX+ins,top:pos.y*PX+ins})}else if(kind==='frame'||kind==='bars'||kind==='sheet'){o.set({left:ins,top:ins})}else{const c=canvas.getVpCenter();o.set({left:Math.round((c.x-o.width/2)/g)*g,top:Math.round((c.y-o.height/2)/g)*g})}
  if(opt.angle)o.set('angle',opt.angle);if(opt.qty)o.qty=opt.qty;if(opt.ref){o.ref=true;o.set('opacity',.35)}
  o.setCoords();canvas.add(o);if(!pos){canvas.setActiveObject(o)}return o}
 // Reemplaza un objeto por una versión regenerada manteniendo posición y giro.
@@ -378,8 +381,8 @@ canvas.on('object:moving',e=>{const o=e.target,g=snapPx();o.set({left:Math.round
 canvas.on('object:scaling',e=>{const o=e.target,g=S.snap;
  if(o.kind==='arc'||o.kind==='vol'||o.kind==='cat'){o.scaleY=o.scaleX}
  else if(o.kind==='seg'){const l=Math.max(g,Math.round(o.width*o.scaleX/PX/g)*g);o.scaleX=l*PX/o.width}
- else if(o.kind==='frame'||o.kind==='bars'||o.kind==='sheet'){const bw=o.kind==='bars'?o.bw:o.width,bh=o.kind==='bars'?o.bh:o.height;
-  o.scaleX=Math.max(g,Math.round(bw*o.scaleX/PX/g)*g)*PX/bw;o.scaleY=Math.max(g,Math.round(bh*o.scaleY/PX/g)*g)*PX/bh}
+ else if(o.kind==='frame'||o.kind==='bars'||o.kind==='sheet'){const bw=o.kind==='bars'?o.bw:o.width,bh=o.kind==='bars'?o.bh:o.height,ins=2*(o.inset||0);
+  o.scaleX=(Math.max(g,Math.round((bw*o.scaleX/PX+ins)/g)*g)-ins)*PX/bw;o.scaleY=(Math.max(g,Math.round((bh*o.scaleY/PX+ins)/g)*g)-ins)*PX/bh}
  showDim(o)});
 canvas.on('object:rotating',e=>{const o=e.target;o.angle=Math.round(o.angle/5)*5;showDim(o)});
 canvas.on('object:modified',e=>{const o=e.target;
@@ -392,7 +395,7 @@ function dims(o){const q=pieces(o),pre=o.ref?'(ya contado) ':'',suf=(o.qty||1)>1
 function dims0(o,q){if(o.ref){q=pieces({...o,ref:false})}
  if(o.kind==='seg')return `${num(q[0][1])} cm`;
  if(o.kind==='sheet')return `chapa ${num(o.width*o.scaleX/PX)} × ${num(o.height*o.scaleY/PX)} cm`;
- if(o.kind==='frame')return `${num(q[0][1])} × ${num(q[2][1])} cm`;
+ if(o.kind==='frame')return `${num(q[0][1])} × ${num(q[2][1])} cm ext.`;
  if(o.kind==='bars')return `${q.length/Math.max(1,o.qty||1)} barrotes de ${num(q[0][1])} cm`;
  if(o.kind==='arc')return `arco r ${num(o.r*o.scaleX)} cm · ${num(q[0][1])} cm`;
  if(o.kind==='vol')return `voluta · ${num(q[0][1])} cm`;
@@ -403,25 +406,25 @@ function showDim(o){if(!o)return;const d=$('dim'),b=o.getBoundingRect();d.textCo
 // ---- vistas: cada vista es un JSON de Fabric; la lista de materiales suma todas ----
 // Las vistas 2D son las seis caras de la caja 3D. map: (x,y) del plano en cm -> (u,v) de la cara. mirror indica que se mira desde atrás/abajo.
 const FACES=[
- {id:'frente',name:'Frente',pl:'xy',at:()=>M.D,dims:()=>[M.W,M.H],map:(x,y)=>[x,M.H-y],unmap:(u,v)=>[u,M.H-v]},
- {id:'fondo',name:'Fondo',pl:'xy',at:()=>0,dims:()=>[M.W,M.H],map:(x,y)=>[M.W-x,M.H-y],unmap:(u,v)=>[M.W-u,M.H-v]},
- {id:'izq',name:'Lateral izq.',pl:'yz',at:()=>0,dims:()=>[M.D,M.H],map:(x,y)=>[x,M.H-y],unmap:(u,v)=>[u,M.H-v]},
- {id:'der',name:'Lateral der.',pl:'yz',at:()=>M.W,dims:()=>[M.D,M.H],map:(x,y)=>[M.D-x,M.H-y],unmap:(u,v)=>[M.D-u,M.H-v]},
- {id:'planta',name:'Planta (arriba)',pl:'xz',at:()=>M.H,dims:()=>[M.W,M.D],map:(x,y)=>[x,y],unmap:(u,v)=>[u,v]},
- {id:'piso',name:'Piso (abajo)',pl:'xz',at:()=>0,dims:()=>[M.W,M.D],map:(x,y)=>[x,y],unmap:(u,v)=>[u,v]},
+ {id:'frente',name:'Frente',pl:'xy',out:1,at:()=>M.D,dims:()=>[M.W,M.H],map:(x,y)=>[x,M.H-y],unmap:(u,v)=>[u,M.H-v]},
+ {id:'fondo',name:'Fondo',pl:'xy',out:-1,at:()=>0,dims:()=>[M.W,M.H],map:(x,y)=>[M.W-x,M.H-y],unmap:(u,v)=>[M.W-u,M.H-v]},
+ {id:'izq',name:'Lateral izq.',pl:'yz',out:-1,at:()=>0,dims:()=>[M.D,M.H],map:(x,y)=>[x,M.H-y],unmap:(u,v)=>[u,M.H-v]},
+ {id:'der',name:'Lateral der.',pl:'yz',out:1,at:()=>M.W,dims:()=>[M.D,M.H],map:(x,y)=>[M.D-x,M.H-y],unmap:(u,v)=>[M.D-u,M.H-v]},
+ {id:'planta',name:'Planta (arriba)',pl:'xz',out:1,at:()=>M.H,dims:()=>[M.W,M.D],map:(x,y)=>[x,y],unmap:(u,v)=>[u,v]},
+ {id:'piso',name:'Piso (abajo)',pl:'xz',out:-1,at:()=>0,dims:()=>[M.W,M.D],map:(x,y)=>[x,y],unmap:(u,v)=>[u,v]},
 ];
 let loading=false,quiet=false,undo=[],views=FACES.map(f=>({id:f.id,name:f.name,json:null})),cur=0;
 function snapshot(){return JSON.stringify(canvas.toJSON(PROPS))}
 function persist(){savePr()}
 let tmr;function after(){if(loading||quiet)return;clearTimeout(tmr);tmr=setTimeout(()=>{if(loading)return;const s=snapshot();views[cur].json=s;if(undo[undo.length-1]!==s){undo.push(s);if(undo.length>60)undo.shift()}persist();buildScene();renderBom()},60)}
 function load(json){return new Promise(res=>{loading=true;canvas.clear();const done=()=>{canvas.getObjects().forEach(decorate);guide();loading=false;ghosts();canvas.requestRenderAll();renderBom();renderProps();res()};if(!json)return done();canvas.loadFromJSON(json,done)})}
-function real(){return canvas.getObjects().filter(o=>o.kind!=='guide'&&o.kind!=='ghost')}
+function real(){return canvas.getObjects().filter(o=>o.kind!=='guide'&&o.kind!=='ghost'&&o.kind!=='gtext')}
 // Fantasmas: proyección sobre esta cara de todo lo demás del modelo (caja, partes interiores, otras caras). No se editan ni se cuentan.
 function ghosts(){const f=FACES[cur],pl=PLANES[f.pl],I={x:0,y:1,z:2},mine=-2-cur,col=css('--muted');
  canvas.getObjects().filter(o=>o.kind==='ghost').forEach(o=>canvas.remove(o));
  const {ms,sh,ex}=members(),items=[],px=p=>{const [x,y]=f.unmap(p[I[pl.u]],p[I[pl.v]]);return [x*PX,y*PX]};
  const line=(a,b,w,i)=>{if(i===mine)return;const A=px(a),B=px(b),len=Math.hypot(B[0]-A[0],B[1]-A[1]),sw=Math.max(w*PX,2);
-  items.push(len<1?new fabric.Circle({left:A[0]-sw/2,top:A[1]-sw/2,radius:sw/2,fill:col}):new fabric.Line([A[0],A[1],B[0],B[1]],{stroke:col,strokeWidth:sw}))};
+  items.push(len<1?new fabric.Circle({left:A[0]-sw/2,top:A[1]-sw/2,radius:sw/2,fill:col}):new fabric.Line([A[0],A[1],B[0],B[1]],{stroke:col,strokeWidth:sw,originX:'center',originY:'center',left:(A[0]+B[0])/2,top:(A[1]+B[1])/2}))};
  const poly=pts=>items.push(new fabric.Polygon(pts.map(p=>({x:p[0],y:p[1]})),{fill:col,strokeWidth:0,opacity:.5}));
  ms.forEach(m=>line(m.a,m.b,Math.max(P[m.p].w,.8),m.i));
  ex.forEach(e=>{if(e.t==='bar')line(e.a,e.b,e.w,e.i);else if(e.i!==mine){const c=px(e.c);
@@ -432,12 +435,15 @@ function ghosts(){const f=FACES[cur],pl=PLANES[f.pl],I={x:0,y:1,z:2},mine=-2-cur
  const g=canvas.getObjects().find(o=>o.kind==='guide');if(g)canvas.sendToBack(g);quiet=false;canvas.requestRenderAll()}
 // Rectángulo punteado con el tamaño de la cara. No se exporta ni se cuenta.
 function guide(){const old=canvas.getObjects().find(o=>o.kind==='guide');if(old)canvas.remove(old);const [w,h]=FACES[cur].dims();
- const g=new fabric.Rect({kind:'guide',left:0,top:0,width:w*PX,height:h*PX,fill:'transparent',stroke:css('--accent'),strokeWidth:1,strokeUniform:true,strokeDashArray:[8,6],selectable:false,evented:false,excludeFromExport:true});canvas.add(g);canvas.sendToBack(g)}
+ canvas.getObjects().filter(o=>o.kind==='gtext').forEach(o=>canvas.remove(o));
+ const g=new fabric.Rect({kind:'guide',left:0,top:0,width:w*PX,height:h*PX,fill:'transparent',stroke:css('--accent'),strokeWidth:1,strokeUniform:true,strokeDashArray:[8,6],selectable:false,evented:false,excludeFromExport:true});
+ const tx=(t,x,y,ang)=>new fabric.Text(t,{kind:'gtext',left:x,top:y,angle:ang||0,fontSize:16,fontFamily:'Barlow Condensed, Arial Narrow, sans-serif',fontWeight:'600',fill:css('--accent'),originX:'center',originY:'center',selectable:false,evented:false,excludeFromExport:true});
+ quiet=true;canvas.add(g,tx(`${w} cm exterior`,w*PX/2,-20),tx(`${h} cm exterior`,-20,h*PX/2,-90));quiet=false;canvas.sendToBack(g)}
 async function switchView(i){if(!loading)views[cur].json=snapshot();cur=i;await load(views[i].json);undo=[views[i].json||snapshot()];renderTabs();persist();fitView()}
 function faceDims(){const [w,h]=FACES[cur].dims();return `${w} × ${h} cm`}
 function renderTabs(){const n=i=>{try{const j=views[i].json;return j?JSON.parse(j).objects.length:0}catch(e){return 0}};
  $('tabs').innerHTML=views.map((v,i)=>`<button data-v="${i}" class="${i===cur?'on':''}">${v.name}${i!==cur&&n(i)?' ·':''}</button>`).join('')
- +`<span class="muted" style="margin-left:6px">cara ${faceDims()} · caja</span><input id="tW" type="number" value="${M.W}" title="Ancho de la caja cm"><span class="muted">×</span><input id="tH" type="number" value="${M.H}" title="Alto cm"><span class="muted">×</span><input id="tD" type="number" value="${M.D}" title="Profundidad cm"><span class="muted">cm</span><button id="tabFit" title="Toma el ancho y alto de lo dibujado">Ajustar cara al dibujo</button>`;
+ +`<span class="muted" style="margin-left:6px">cara ${faceDims()} exterior · caja</span><input id="tW" type="number" value="${M.W}" title="Ancho de la caja cm"><span class="muted">×</span><input id="tH" type="number" value="${M.H}" title="Alto cm"><span class="muted">×</span><input id="tD" type="number" value="${M.D}" title="Profundidad cm"><span class="muted">cm</span><button id="tabFit" title="Toma el ancho y alto de lo dibujado">Ajustar cara al dibujo</button>`;
  $('tabs').querySelectorAll('[data-v]').forEach(b=>b.addEventListener('click',()=>switchView(+b.dataset.v)));
  ['tW','tH','tD'].forEach(id=>$(id).addEventListener('change',()=>{M.W=Math.max(5,+$('tW').value||M.W);M.H=Math.max(5,+$('tH').value||M.H);M.D=Math.max(1,+$('tD').value||M.D);renderForm();guide();frameCam();update3();renderTabs()}));
  $('tabFit').addEventListener('click',()=>{const objs=real().filter(o=>!o.ref).map(o=>o.toObject(PROPS));if(!objs.length)return;const [,,x1,y1]=bbox2d(objs),f=FACES[cur],pl=PLANES[f.pl];M[AXS[pl.u]]=Math.round(x1);M[AXS[pl.v]]=Math.round(y1);renderForm();guide();frameCam();update3();renderTabs()})}
@@ -481,7 +487,7 @@ function renderProps(){const o=canvas.getActiveObject(),box=$('props');
  const ps=`<label>Perfil<select data-k="p">${PROFILES.map(p=>`<option value="${p.id}"${p.id===o.p?' selected':''}>${p.name}</option>`).join('')}</select></label>`;
  let h='';
  if(o.kind==='seg')h=ps+fld('len','Largo cm',o.width*o.scaleX/PX)+fld('angle','Giro °',o.angle);
- if(o.kind==='frame')h=ps+fld('w','Ancho cm',o.width*o.scaleX/PX)+fld('h','Alto cm',o.height*o.scaleY/PX)+fld('angle','Giro °',o.angle);
+ if(o.kind==='frame'){const ins=2*(o.inset||0);h=ps+fld('w','Ancho exterior cm',o.width*o.scaleX/PX+ins)+fld('h','Alto exterior cm',o.height*o.scaleY/PX+ins)+fld('angle','Giro °',o.angle)}
  if(o.kind==='bars')h=ps+fld('w','Ancho zona cm',o.bw*o.scaleX/PX)+fld('h','Alto zona cm',o.bh*o.scaleY/PX)+fld('sp','Paso cm',o.sp)+`<label>Dirección<select data-k="dir"><option value="v"${o.dir==='v'?' selected':''}>Verticales</option><option value="h"${o.dir==='h'?' selected':''}>Horizontales</option></select></label>`+fld('angle','Giro °',o.angle);
  if(o.kind==='arc')h=ps+fld('r','Radio cm',o.r*o.scaleX)+fld('sweep','Abertura °',o.sweep,5)+fld('angle','Giro °',o.angle);
  if(o.kind==='vol')h=ps+fld('r1','Radio externo cm',o.r1*o.scaleX,.5)+fld('r0','Radio interno cm',o.r0*o.scaleX,.5)+fld('turns','Vueltas',o.turns,.25)+fld('angle','Giro °',o.angle);
@@ -497,11 +503,11 @@ function apply(o,k,v){const st=css('--steel');let n=o;
  else if(k==='qty'){o.qty=Math.max(1,Math.round(v))}
  else if(o.kind==='sheet'){if(k==='p')o.p=v;if(k==='w')o.set('scaleX',v*PX/o.width);if(k==='h')o.set('scaleY',v*PX/o.height)}
  else if(k==='p'){const w=Math.max(P[v].w*PX,2);o.p=v;
-  if(o.kind==='seg')o.set({height:w});else if(o.kind==='frame'||o.kind==='arc'||o.kind==='vol')o.set({strokeWidth:w});
+  if(o.kind==='seg')o.set({height:w});else if(o.kind==='frame'){const ext=[o.width*o.scaleX/PX+2*(o.inset||0),o.height*o.scaleY/PX+2*(o.inset||0)],ni=P[v].w/2;o.set({strokeWidth:w,inset:ni,scaleX:1,scaleY:1,width:(ext[0]-2*ni)*PX,height:(ext[1]-2*ni)*PX,left:o.left+(ni-(o.inset||0))*PX,top:o.top+(ni-(o.inset||0))*PX})}else if(o.kind==='arc'||o.kind==='vol')o.set({strokeWidth:w});
   else if(o.kind==='bars')n=rebuild(o,()=>mkBars({p:v,bw:o.bw*o.scaleX,bh:o.bh*o.scaleY,sp:o.sp,dir:o.dir}))}
  else if(o.kind==='seg'&&k==='len')o.set('scaleX',v*PX/o.width);
- else if(o.kind==='frame'&&k==='w')o.set('scaleX',v*PX/o.width);
- else if(o.kind==='frame'&&k==='h')o.set('scaleY',v*PX/o.height);
+ else if(o.kind==='frame'&&k==='w')o.set('scaleX',Math.max(1,v-2*(o.inset||0))*PX/o.width);
+ else if(o.kind==='frame'&&k==='h')o.set('scaleY',Math.max(1,v-2*(o.inset||0))*PX/o.height);
  else if(o.kind==='bars'){const a={p:o.p,bw:o.bw*o.scaleX,bh:o.bh*o.scaleY,sp:o.sp,dir:o.dir};if(k==='w')a.bw=v*PX;if(k==='h')a.bh=v*PX;if(k==='sp')a.sp=Math.max(1,v);if(k==='dir')a.dir=v;n=rebuild(o,()=>mkBars(a))}
  else if(o.kind==='arc'){const a={p:o.p,r:o.r*o.scaleX,sweep:o.sweep};if(k==='r')a.r=Math.max(1,v);if(k==='sweep')a.sweep=Math.min(355,Math.max(10,v));n=rebuild(o,()=>mkArc(a))}
  else if(o.kind==='vol'){const a={p:o.p,r0:o.r0*o.scaleX,r1:o.r1*o.scaleX,turns:o.turns};if(k==='r1')a.r1=Math.max(a.r0+.5,v);if(k==='r0')a.r0=Math.max(.5,Math.min(a.r1-.5,v));if(k==='turns')a.turns=Math.max(.25,v);n=rebuild(o,()=>mkVol(a))}
@@ -603,31 +609,33 @@ let M={W:80,H:90,D:50,p:'an25',edges:{top:true,bot:false,vert:true},parts:[]},se
 function saveM(){savePr()}
 function p3(pl,u,v,at){const o={};o[pl.u]=u;o[pl.v]=v;o[pl.n]=at;return [o.x,o.y,o.z]}
 // Devuelve hierros {p,a,b,len,i} y chapas {p,w,h,pl,at,i}; i = índice de parte, -1 = caja.
-function members(){const ms=[],sh=[],ex=[],{W,H,D,p,edges:E}=M;
- const seg=(a,b,p,i)=>ms.push({p,a,b,i,len:Math.hypot(b[0]-a[0],b[1]-a[1],b[2]-a[2])});
- if(E.top){seg([0,H,0],[W,H,0],p,-1);seg([0,H,D],[W,H,D],p,-1);seg([0,H,0],[0,H,D],p,-1);seg([W,H,0],[W,H,D],p,-1)}
- if(E.bot){seg([0,0,0],[W,0,0],p,-1);seg([0,0,D],[W,0,D],p,-1);seg([0,0,0],[0,0,D],p,-1);seg([W,0,0],[W,0,D],p,-1)}
- if(E.vert){seg([0,0,0],[0,H,0],p,-1);seg([W,0,0],[W,H,0],p,-1);seg([0,0,D],[0,H,D],p,-1);seg([W,0,D],[W,H,D],p,-1)}
- M.parts.forEach((q,i)=>{const pl=PLANES[q.plane],U=M[AXS[pl.u]],V=M[AXS[pl.v]],at=q.at,P=(u,v)=>p3(pl,u,v,at);
-  if(q.type==='frame'){seg(P(0,0),P(U,0),q.p,i);seg(P(0,V),P(U,V),q.p,i);seg(P(0,0),P(0,V),q.p,i);seg(P(U,0),P(U,V),q.p,i)}
-  if(q.type==='bars'){const along=q.dir==='u',span=along?V:U,n=barN(span,q.sp),pitch=span/(n+1);for(let k=1;k<=n;k++)along?seg(P(0,pitch*k),P(U,pitch*k),q.p,i):seg(P(pitch*k,0),P(pitch*k,V),q.p,i)}
-  if(q.type==='bar'){q.dir==='u'?seg(P(0,q.off),P(U,q.off),q.p,i):seg(P(q.off,0),P(q.off,V),q.p,i)}
+// Convención: las medidas de la caja son EXTERIORES. Los hierros van por dentro de la caja (eje a medio perfil del borde)
+// y se cuentan por la medida exterior (L), que es la longitud de corte a inglete y el lado seguro para corte a tope.
+function members(){const ms=[],sh=[],ex=[],{W,H,D,p,edges:E}=M,i0=Math.max(P[p].w,.8)/2,a=i0,x1=W-i0,y1=H-i0,z1=D-i0;
+ const seg=(a,b,p,i,L)=>ms.push({p,a,b,i,L,len:L||Math.hypot(b[0]-a[0],b[1]-a[1],b[2]-a[2])});
+ if(E.top){seg([a,y1,a],[x1,y1,a],p,-1,W);seg([a,y1,z1],[x1,y1,z1],p,-1,W);seg([a,y1,a],[a,y1,z1],p,-1,D);seg([x1,y1,a],[x1,y1,z1],p,-1,D)}
+ if(E.bot){seg([a,a,a],[x1,a,a],p,-1,W);seg([a,a,z1],[x1,a,z1],p,-1,W);seg([a,a,a],[a,a,z1],p,-1,D);seg([x1,a,a],[x1,a,z1],p,-1,D)}
+ if(E.vert){seg([a,a,a],[a,y1,a],p,-1,H);seg([x1,a,a],[x1,y1,a],p,-1,H);seg([a,a,z1],[a,y1,z1],p,-1,H);seg([x1,a,z1],[x1,y1,z1],p,-1,H)}
+ M.parts.forEach((q,i)=>{const pl=PLANES[q.plane],U=M[AXS[pl.u]],V=M[AXS[pl.v]],N=M[AXS[pl.n]];
+  const wq=q.type==='sheet'?Math.max(SH[q.sheet]?SH[q.sheet].e/10:.2,.6):Math.max(P[q.p].w,.8),iq=wq/2,at=Math.min(N-iq,Math.max(iq,q.at)),P_=(u,v)=>p3(pl,u,v,at);
+  if(q.type==='frame'){seg(P_(iq,iq),P_(U-iq,iq),q.p,i,U);seg(P_(iq,V-iq),P_(U-iq,V-iq),q.p,i,U);seg(P_(iq,iq),P_(iq,V-iq),q.p,i,V);seg(P_(U-iq,iq),P_(U-iq,V-iq),q.p,i,V)}
+  if(q.type==='bars'){const along=q.dir==='u',span=along?V:U,run=along?U:V,n=barN(span,q.sp),pitch=span/(n+1);for(let k=1;k<=n;k++)along?seg(P_(i0,pitch*k),P_(run-i0,pitch*k),q.p,i,run-2*i0):seg(P_(pitch*k,i0),P_(pitch*k,run-i0),q.p,i,run-2*i0)}
+  if(q.type==='bar'){q.dir==='u'?seg(P_(i0,q.off),P_(U-i0,q.off),q.p,i,U-2*i0):seg(P_(q.off,i0),P_(q.off,V-i0),q.p,i,V-2*i0)}
   if(q.type==='sheet')sh.push({p:q.sheet,w:U,h:V,pl,at,i});
   });
  FACES.forEach((f,k)=>face3d(f,k,ex));
  return {ms,sh,ex}}
 // Objetos de una vista 2D (JSON de Fabric) convertidos a primitivas 3D sobre una cara. Lo marcado "ya contado" no se monta.
-function viewObjs(id){const k=FACES.findIndex(f=>f.id===id),v=views[k];if(!v)return [];const j=(k===cur&&!loading)?snapshot():v.json;try{return j?JSON.parse(j).objects.filter(o=>o.kind!=='guide'):[]}catch(e){return []}}
-function bbox2d(objs){let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;for(const o of objs){const f=xf2(o),w=o.width||0,h=o.height||0;for(const [lx,ly] of [[0,0],[w,0],[0,h],[w,h]]){const [x,y]=f(lx,ly);x0=Math.min(x0,x);y0=Math.min(y0,y);x1=Math.max(x1,x);y1=Math.max(y1,y)}}return x0>x1?[0,0,0,0]:[x0,y0,x1,y1]}
+function viewObjs(id){const k=FACES.findIndex(f=>f.id===id),v=views[k];if(!v)return [];const j=(k===cur&&!loading)?snapshot():v.json;try{return j?JSON.parse(j).objects.filter(o=>o.kind!=='guide'&&o.kind!=='gtext'):[]}catch(e){return []}}
+function bbox2d(objs){let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;for(const o of objs){const f=xf2(o),w=o.width||0,h=o.height||0,i=(o.inset||0)*PX/((o.scaleX||1));for(const [lx,ly] of [[-i,-i],[w+i,-i],[-i,h+i],[w+i,h+i]]){const [x,y]=f(lx,ly);x0=Math.min(x0,x);y0=Math.min(y0,y);x1=Math.max(x1,x);y1=Math.max(y1,y)}}return x0>x1?[0,0,0,0]:[x0,y0,x1,y1]}
 function xf2(o){const a=(o.angle||0)*Math.PI/180,sx=o.scaleX||1,sy=o.scaleY||1,c=Math.cos(a),sn=Math.sin(a);return (lx,ly)=>[(o.left+lx*sx*c-ly*sy*sn)/PX,(o.top+lx*sx*sn+ly*sy*c)/PX]}
 // i de cara = -2-k para distinguirlas de las partes; el clic en 3D lleva a editar esa cara.
 let CURVE=0;
-function face3d(f,k,ex){const objs=viewObjs(f.id).filter(o=>!o.ref);if(!objs.length)return;const pl=PLANES[f.pl],at=f.at(),i=-2-k,src=f.name;let cid=null;
- const to3=(x,y)=>{const [u,v]=f.map(x,y);return p3(pl,u,v,at)};
- for(const o of objs){const f=xf2(o),T=(lx,ly)=>to3(...f(lx,ly)),w=o.p&&P[o.p]?Math.max(P[o.p].w,.8):1,W=o.width||0,H=o.height||0;
-  const line=(a,b)=>ex.push({t:'bar',a:T(...a),b:T(...b),w,i,p:o.p,qty:Math.max(1,o.qty||1),curve:cid,src}),chain=pts=>{cid=cid||++CURVE;for(let k=1;k<pts.length;k++)line(pts[k-1],pts[k]);cid=null};
+function face3d(f,k,ex){const objs=viewObjs(f.id).filter(o=>!o.ref);if(!objs.length)return;const pl=PLANES[f.pl],at0=f.at(),i=-2-k,src=f.name;let cid=null;
+ for(const o of objs){const fx=xf2(o),w=o.kind==='sheet'?Math.max(SH[o.p]?SH[o.p].e/10:.2,.6):(o.p&&P[o.p]?Math.max(P[o.p].w,.8):1),at=at0-f.out*w/2,T=(lx,ly)=>{const [x,y]=fx(lx,ly),[u,v]=f.map(x,y);return p3(pl,u,v,at)},W=o.width||0,H=o.height||0,sx=o.scaleX||1,sy=o.scaleY||1,ins=2*(o.inset||0);let L=null;
+  const line=(a,b)=>ex.push({t:'bar',a:T(...a),b:T(...b),w,i,p:o.p,qty:Math.max(1,o.qty||1),curve:cid,src,L}),chain=pts=>{cid=cid||++CURVE;for(let k=1;k<pts.length;k++)line(pts[k-1],pts[k]);cid=null};
   if(o.kind==='seg')line([0,H/2],[W,H/2]);
-  else if(o.kind==='frame'){line([0,0],[W,0]);line([W,0],[W,H]);line([W,H],[0,H]);line([0,H],[0,0])}
+  else if(o.kind==='frame'){L=W*sx/PX+ins;line([0,0],[W,0]);line([W,H],[0,H]);L=H*sy/PX+ins;line([W,0],[W,H]);line([0,H],[0,0]);L=null}
   else if(o.kind==='bars'){const v=o.dir==='v',span=v?o.bw:o.bh,n=barN(span/PX,o.sp),pitch=span/(n+1);for(let k=1;k<=n;k++)v?line([pitch*k,0],[pitch*k,o.bh]):line([0,pitch*k],[o.bw,pitch*k])}
   else if(o.kind==='arc'){const r=o.r*PX,t=o.sweep*Math.PI/180,pts=[];for(let k=0;k<=32;k++){const a=Math.PI-t*k/32;pts.push([r*Math.cos(a),-r*Math.sin(a)])}const mx=Math.min(...pts.map(p=>p[0])),my=Math.min(...pts.map(p=>p[1]));chain(pts.map(p=>[p[0]-mx,p[1]-my]))}
   else if(o.kind==='vol'){const pts=volPts(o.r0,o.r1,o.turns).map(p=>[p[0]*PX,p[1]*PX]),mx=Math.min(...pts.map(p=>p[0])),my=Math.min(...pts.map(p=>p[1]));chain(pts.map(p=>[p[0]-mx,p[1]-my]))}
@@ -643,11 +651,11 @@ function frameCam(){orbit.r=Math.max(M.W,M.H,M.D)*2.8}
 let BOMINFO={dups:0,warn:[],bySrc:[]};
 function objects3d(){const {ms,sh,ex}=members(),seen=new Map(),geo=new Map(),curves=new Map(),out=[],warn=[];let dups=0;
  const r=v=>v.map(x=>Math.round(x*2)/2).join(','),gk=(a,b)=>{const A=r(a),B=r(b);return A<B?A+'|'+B:B+'|'+A},len=(a,b)=>Math.hypot(b[0]-a[0],b[1]-a[1],b[2]-a[2]);
- const addS=(p,a,b,qty,src)=>{if(len(a,b)<.05)return;const g=gk(a,b),k=p+'|'+g;if(seen.has(k)){dups++;seen.get(k).qty=Math.max(seen.get(k).qty,qty);return}
+ const addS=(p,a,b,qty,src,L)=>{if(len(a,b)<.05)return;const g=gk(a,b),k=p+'|'+g;if(seen.has(k)){dups++;seen.get(k).qty=Math.max(seen.get(k).qty,qty);return}
   if(geo.has(g)&&geo.get(g)!==p){const w=`${P[geo.get(g)].name} y ${P[p].name} ocupan el mismo lugar (${src}). Se cuentan los dos.`;if(!warn.includes(w))warn.push(w)}geo.set(g,p);
-  const e={kind:'seg',p,width:len(a,b)*PX,qty,src};seen.set(k,e);out.push(e)};
- ms.forEach(m=>addS(m.p,m.a,m.b,1,m.i<0?'Caja':'Partes interiores'));
- ex.forEach(e=>{if(e.t!=='bar'||!e.p||e.curve==='cat')return;if(e.curve){let c=curves.get(e.curve);if(!c){c={kind:'seg',p:e.p,width:0,qty:e.qty,src:e.src};curves.set(e.curve,c)}c.width+=len(e.a,e.b)*PX}else addS(e.p,e.a,e.b,e.qty,e.src)});
+  const e={kind:'seg',p,width:(L||len(a,b))*PX,qty,src};seen.set(k,e);out.push(e)};
+ ms.forEach(m=>addS(m.p,m.a,m.b,1,m.i<0?'Caja':'Partes interiores',m.L));
+ ex.forEach(e=>{if(e.t!=='bar'||!e.p||e.curve==='cat')return;if(e.curve){let c=curves.get(e.curve);if(!c){c={kind:'seg',p:e.p,width:0,qty:e.qty,src:e.src};curves.set(e.curve,c)}c.width+=len(e.a,e.b)*PX}else addS(e.p,e.a,e.b,e.qty,e.src,e.L)});
  out.push(...curves.values());
  sh.forEach(x=>out.push({kind:'sheet',p:x.p,width:x.w*PX,height:x.h*PX,src:'Partes interiores'}));
  FACES.forEach(f=>viewObjs(f.id).forEach(o=>{if((o.kind==='cat'||o.kind==='sheet')&&!o.ref)out.push({...o,src:f.name})}));
@@ -662,7 +670,8 @@ const cam=new THREE.PerspectiveCamera(40,1,1,5000);
 const ortho=[0,1,2].map(()=>new THREE.OrthographicCamera(-1,1,1,-1,1,5000));
 scene.add(new THREE.AmbientLight(0xffffff,.65));
 const sun=new THREE.DirectionalLight(0xffffff,.7);sun.position.set(200,400,300);scene.add(sun);
-let group=new THREE.Group();scene.add(group);
+let group=new THREE.Group();scene.add(group);let dimG=new THREE.Group();scene.add(dimG);
+const COTAS=[0,1,2].map(()=>{const d=document.createElement('div');d.className='cota';return d});
 let orbit={th:.7,ph:1.05,r:280};
 const ray=new THREE.Raycaster(),mouse=new THREE.Vector2();
 function hex(v){return new THREE.Color(css(v))}
@@ -682,13 +691,28 @@ function buildScene(){scene.remove(group);group=new THREE.Group();const st=hex('
   const mesh=new THREE.Mesh(new THREE.BoxGeometry(dims.x,dims.y,dims.z),new THREE.MeshLambertMaterial({color:x.i===sel3?acc:st,transparent:true,opacity:.75}));
   const c={x:0,y:0,z:0};c[x.pl.u]=x.w/2;c[x.pl.v]=x.h/2;c[x.pl.n]=x.at;mesh.position.set(c.x,c.y,c.z);mesh.userData.i=x.i;group.add(mesh)}
  const gs=Math.max(M.W,M.D)*2,grid=new THREE.GridHelper(gs,Math.round(gs/10),css('--grid'),css('--grid'));grid.position.set(M.W/2,-.5,M.D/2);grid.userData.i=null;group.add(grid);
- renderer&&renderer.setClearColor(hex('--panel'));scene.add(group);$('v3dim').textContent=$('minidim').textContent=`${M.W} × ${M.H} × ${M.D} cm`}
+ renderer&&renderer.setClearColor(hex('--panel'));scene.add(group);$('v3dim').textContent=$('minidim').textContent=`${M.W} × ${M.H} × ${M.D} cm exteriores`;buildDims()}
+// Cotas exteriores: línea de cota desplazada, líneas de extensión desde las esquinas y marcas en los extremos.
+function buildDims(){scene.remove(dimG);dimG=new THREE.Group();const {W,H,D}=M,o=Math.max(8,Math.max(W,H,D)*.09),t=Math.max(1.5,o*.15),pts=[];
+ const L=(a,b)=>pts.push(new THREE.Vector3(...a),new THREE.Vector3(...b));
+ // ancho: arriba y adelante
+ L([0,H+o,D+o],[W,H+o,D+o]);L([0,H,D],[0,H+o,D+o]);L([W,H,D],[W,H+o,D+o]);L([0,H+o-t,D+o],[0,H+o+t,D+o]);L([W,H+o-t,D+o],[W,H+o+t,D+o]);
+ // profundidad: arriba y a la derecha
+ L([W+o,H+o,0],[W+o,H+o,D]);L([W,H,0],[W+o,H+o,0]);L([W,H,D],[W+o,H+o,D]);L([W+o-t,H+o,0],[W+o+t,H+o,0]);L([W+o-t,H+o,D],[W+o+t,H+o,D]);
+ // alto: a la derecha y adelante
+ L([W+o,0,D+o],[W+o,H,D+o]);L([W,0,D],[W+o,0,D+o]);L([W,H,D],[W+o,H,D+o]);L([W+o-t,0,D+o],[W+o+t,0,D+o]);L([W+o-t,H,D+o],[W+o+t,H,D+o]);
+ const g=new THREE.BufferGeometry().setFromPoints(pts);dimG.add(new THREE.LineSegments(g,new THREE.LineBasicMaterial({color:hex('--accent')})));dimG.visible=S.dims!==false;scene.add(dimG);
+ dimG.userData.mid=[[W/2,H+o,D+o,W],[W+o,H+o,D/2,D],[W+o,H/2,D+o,H]]}
+function placeCotas(mw,h){const host=c3.parentElement,show=S.dims!==false&&dimG.userData.mid;
+ COTAS.forEach((d,k)=>{if(d.parentElement!==host)host.appendChild(d);if(!show){d.style.display='none';return}const [x,y,z,val]=dimG.userData.mid[k],n=new THREE.Vector3(x,y,z).project(cam);
+  if(n.z>1){d.style.display='none';return}d.style.display='block';d.textContent=`${num(val)} cm`;d.style.left=((n.x+1)/2*mw)+'px';d.style.top=((1-n.y)/2*h)+'px'})}
 function size3(){if(!renderer)return;const box=c3.parentElement,w=box.clientWidth,h=box.clientHeight;if(w&&h&&(c3.width!==w||c3.height!==h))renderer.setSize(w,h,false)}
 function placeCam(aspect){const c=center();cam.aspect=aspect;cam.updateProjectionMatrix();cam.position.set(c.x+orbit.r*Math.sin(orbit.ph)*Math.sin(orbit.th),c.y+orbit.r*Math.cos(orbit.ph),c.z+orbit.r*Math.sin(orbit.ph)*Math.cos(orbit.th));cam.lookAt(c)}
-function draw3(){if(!renderer)return;size3();const w=c3.width,h=c3.height;if(!w||!h)return;renderer.setScissorTest(true);
+function draw3(){if(!renderer)return;size3();const w=c3.width,h=c3.height;if(!w||!h)return;renderer.setScissorTest(true);dimG.visible=S.dims!==false;
  const c=center(),mini=c3.parentElement===$('mini3'),mw=mini?w:Math.floor(w*.68);
  placeCam(mw/h);
- renderer.setViewport(0,0,mw,h);renderer.setScissor(0,0,mw,h);renderer.render(scene,cam);if(mini)return;
+ renderer.setViewport(0,0,mw,h);renderer.setScissor(0,0,mw,h);renderer.render(scene,cam);placeCotas(mw,h);if(mini)return;
+ dimG.visible=false;
  const s=Math.max(M.W,M.H,M.D)*1.25,vw=w-mw,vh=Math.floor(h/3),big=2000;
  const pos=[[c.x,c.y,c.z+big,0,1,0],[c.x+big,c.y,c.z,0,1,0],[c.x,c.y+big,c.z,0,0,-1]];
  ortho.forEach((o,k)=>{const [x,y,z,ux,uy,uz]=pos[k],asp=vw/vh;o.left=-s/2*asp;o.right=s/2*asp;o.top=s/2;o.bottom=-s/2;o.up.set(ux,uy,uz);o.position.set(x,y,z);o.lookAt(c);o.updateProjectionMatrix();
@@ -718,6 +742,8 @@ let hist3=[];
 function pushHist(){const j=JSON.stringify(M);if(hist3[hist3.length-1]!==j){hist3.push(j);if(hist3.length>60)hist3.shift()}}
 function undo3(){if(hist3.length<2)return;hist3.pop();M=JSON.parse(hist3[hist3.length-1]);sel3=null;renderForm();buildScene();renderPlist();renderBom();saveM()}
 $('undo3').addEventListener('click',undo3);
+$('btnDims').addEventListener('click',()=>{S.dims=S.dims===false?true:false;$('btnDims').classList.toggle('on',S.dims!==false);saveCfg()});
+$('btnDims').classList.toggle('on',S.dims!==false);
 function del3(){if(sel3===null||sel3<0)return;M.parts.splice(sel3,1);sel3=null;update3()}
 $('del3').addEventListener('click',del3);
 document.addEventListener('keydown',e=>{if(S.mode!=='3d'||/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName))return;
@@ -777,7 +803,7 @@ const TPL=[
  {id:'brasero',name:'Brasero / fogonero',desc:'Caja de ángulo con chapa en los cuatro lados y piso',M:{W:50,H:35,D:50,p:'an25',edges:{top:true,bot:false,vert:true},parts:[{type:'sheet',plane:'xz',at:10,sheet:'ch2'}]},
   faces:{frente:[F('sheet',{p:'ch16',w:50,h:35})],fondo:[F('sheet',{p:'ch16',w:50,h:35})],izq:[F('sheet',{p:'ch16',w:50,h:35})],der:[F('sheet',{p:'ch16',w:50,h:35})]}},
 ];
-function faceJson(items){const objs=items.map(it=>{const o=mk(it.k,it.o);o.set({left:it.x*PX,top:it.y*PX});if(it.o.angle)o.set('angle',it.o.angle);if(it.qty)o.qty=it.qty;o.setCoords();return o.toObject(PROPS)});return JSON.stringify({version:fabric.version,objects:objs})}
+function faceJson(items){const objs=items.map(it=>{const o=mk(it.k,it.o);const ins=(o.inset||0)*PX;o.set({left:it.x*PX+ins,top:it.y*PX+ins});if(it.o.angle)o.set('angle',it.o.angle);if(it.qty)o.qty=it.qty;o.setCoords();return o.toObject(PROPS)});return JSON.stringify({version:fabric.version,objects:objs})}
 async function applyTpl(t){M=JSON.parse(JSON.stringify(t.M));sel3=null;const fj=tplFaces(t);views.forEach(v=>v.json=fj[v.id]);cur=0;undo=[];persist();renderForm();frameCam();
  await load(views[0].json);undo=[views[0].json||snapshot()];renderTabs();update3();fitView()}
 let thumbsDone=false;
@@ -788,7 +814,7 @@ function renderGal(){$('galGrid').innerHTML=TPL.map(t=>`<button class="card" dat
 function renderThumb(M2,faces2){if(!renderer)return '';const w=c3.width,h=c3.height;if(!w||!h)return '';
  const save={M,json:views.map(v=>v.json),cur,sel:sel3,r:orbit.r};loading=true;
  try{M=JSON.parse(JSON.stringify(M2));views.forEach(v=>v.json=(faces2&&faces2[v.id])||null);sel3=null;frameCam();orbit.r*=1.3;buildScene();
-  placeCam(w/h);renderer.setScissorTest(false);renderer.setViewport(0,0,w,h);renderer.render(scene,cam);
+  placeCam(w/h);renderer.setScissorTest(false);renderer.setViewport(0,0,w,h);dimG.visible=false;renderer.render(scene,cam);
   const oc=document.createElement('canvas');oc.width=320;oc.height=200;const sw=Math.min(w,h*1.6),sh=sw/1.6;oc.getContext('2d').drawImage(c3,(w-sw)/2,(h-sh)/2,sw,sh,0,0,320,200);return oc.toDataURL('image/jpeg',.8)}
  finally{M=save.M;views.forEach((v,i)=>v.json=save.json[i]);cur=save.cur;sel3=save.sel;orbit.r=save.r;loading=false;buildScene()}}
 function tplFaces(t){return Object.fromEntries(FACES.map(f=>[f.id,t.faces&&t.faces[f.id]?faceJson(t.faces[f.id]):null]))}
