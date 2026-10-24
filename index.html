@@ -138,6 +138,15 @@ th{font-family:var(--font-d);font-weight:600;letter-spacing:.04em;text-transform
     <h2>Empezar</h2>
     <button data-gal>Modelos base</button>
     <button id="btnClear">Vaciar esta cara</button>
+    <h2>Foto de fondo</h2>
+    <span class="muted">Cargá la foto que te mandó el cliente, decí cuánto mide de ancho y dibujá las partes encima.</span>
+    <input type="file" id="photoBg" accept="image/*" style="width:100%">
+    <div id="photoCtl" hidden style="display:flex;flex-direction:column;gap:6px">
+      <label>La foto mide de ancho<span class="row"><input id="photoW" type="number" min="5" style="width:80px"><span class="muted">cm</span></span></label>
+      <label>Transparencia<input id="photoOp" type="range" min="10" max="100" value="55"></label>
+      <button id="photoAdj">Mover / escalar la foto</button>
+      <button id="photoDel">Quitar foto</button>
+    </div>
     <h2>Perfil para lo nuevo</h2>
     <label><select id="curProfile"></select></label>
     <h2>Estructura</h2>
@@ -363,7 +372,7 @@ function mkCat(id){const c=C[id],st=css('--steel'),s=c.s*PX,k=[];
  else if(c.shape==='ball')k.push(new fabric.Circle({radius:s/2,fill:st}));
  else k.push(new fabric.Path(`M 0 ${s/2} Q ${-s/2} 0 0 ${-s/2} Q ${s/2} 0 0 ${s/2} Z`,{fill:st}));
  return new fabric.Group(k,{kind:'cat',catId:id,lockScalingX:true,lockScalingY:true})}
-function decorate(o){const k=o.kind;o.set('opacity',o.ref?.35:1);
+function decorate(o){const k=o.kind;if(k==='photo'){o.set({selectable:false,evented:false,lockRotation:true});o.setControlsVisibility({mt:false,mb:false,ml:false,mr:false,mtr:false});return o}o.set('opacity',o.ref?.35:1);
  if(k==='seg')o.setControlsVisibility({mt:false,mb:false,tl:false,tr:false,bl:false,br:false});
  if(k==='arc'||k==='vol')o.setControlsVisibility({mt:false,mb:false,ml:false,mr:false});
  if(k==='cat')o.setControlsVisibility({mt:false,mb:false,ml:false,mr:false,tl:false,tr:false,bl:false,br:false});
@@ -393,6 +402,7 @@ canvas.on('selection:created',onSel);canvas.on('selection:updated',onSel);canvas
 function onSel(){const o=canvas.getActiveObject();showDim(o);renderProps()}
 function dims(o){const q=pieces(o),pre=o.ref?'(ya contado) ':'',suf=((o.qty||1)>1?` ×${o.qty}`:'')+(o.depth?` · ${num(o.depth)} cm adentro`:'');return pre+dims0(o,q)+suf}
 function dims0(o,q){if(o.ref){q=pieces({...o,ref:false})}
+ if(o.kind==='photo')return 'Foto de fondo';
  if(o.kind==='seg')return `${num(q[0][1])} cm`;
  if(o.kind==='sheet')return `chapa ${num(o.width*o.scaleX/PX)} × ${num(o.height*o.scaleY/PX)} cm`;
  if(o.kind==='frame')return `${num(q[0][1])} × ${num(q[2][1])} cm ext.`;
@@ -442,13 +452,13 @@ function guide(){const old=canvas.getObjects().find(o=>o.kind==='guide');if(old)
 async function switchView(i){if(!loading)views[cur].json=snapshot();cur=i;await load(views[i].json);undo=[views[i].json||snapshot()];renderTabs();persist();fitView()}
 function faceDims(){const [w,h]=FACES[cur].dims();return `${w} × ${h} cm`}
 function renderTabs(){const n=i=>{try{const j=views[i].json;return j?JSON.parse(j).objects.length:0}catch(e){return 0}};
- $('tabs').innerHTML=views.map((v,i)=>`<button data-v="${i}" class="${i===cur?'on':''}">${v.name}${i!==cur&&n(i)?' ·':''}</button>`).join('')
+ photoUI();$('tabs').innerHTML=views.map((v,i)=>`<button data-v="${i}" class="${i===cur?'on':''}">${v.name}${i!==cur&&n(i)?' ·':''}</button>`).join('')
  +`<span class="muted" style="margin-left:6px">cara ${faceDims()} exterior · caja</span><input id="tW" type="number" value="${M.W}" title="Ancho de la caja cm"><span class="muted">×</span><input id="tH" type="number" value="${M.H}" title="Alto cm"><span class="muted">×</span><input id="tD" type="number" value="${M.D}" title="Profundidad cm"><span class="muted">cm</span><button id="tabFit" title="Toma el ancho y alto de lo dibujado">Ajustar cara al dibujo</button>`;
  $('tabs').querySelectorAll('[data-v]').forEach(b=>b.addEventListener('click',()=>switchView(+b.dataset.v)));
  ['tW','tH','tD'].forEach(id=>$(id).addEventListener('change',()=>{M.W=Math.max(5,+$('tW').value||M.W);M.H=Math.max(5,+$('tH').value||M.H);M.D=Math.max(1,+$('tD').value||M.D);renderForm();guide();frameCam();update3();renderTabs()}));
- $('tabFit').addEventListener('click',()=>{const objs=real().filter(o=>!o.ref).map(o=>o.toObject(PROPS));if(!objs.length)return;const [,,x1,y1]=bbox2d(objs),f=FACES[cur],pl=PLANES[f.pl];M[AXS[pl.u]]=Math.round(x1);M[AXS[pl.v]]=Math.round(y1);renderForm();guide();frameCam();update3();renderTabs()})}
+ $('tabFit').addEventListener('click',()=>{const objs=real().filter(o=>!o.ref&&o.kind!=='photo').map(o=>o.toObject(PROPS));if(!objs.length)return;const [,,x1,y1]=bbox2d(objs),f=FACES[cur],pl=PLANES[f.pl];M[AXS[pl.u]]=Math.round(x1);M[AXS[pl.v]]=Math.round(y1);renderForm();guide();frameCam();update3();renderTabs()})}
 $('btnUndo').addEventListener('click',()=>{if(undo.length<2)return;undo.pop();load(undo[undo.length-1]).then(()=>{views[cur].json=undo[undo.length-1];persist()})});
-function toggleRef(){const os=canvas.getActiveObjects();if(!os.length)return;os.forEach(o=>{o.ref=!o.ref;o.set('opacity',o.ref?.35:1)});canvas.requestRenderAll();after();renderProps();showDim(canvas.getActiveObject())}
+function toggleRef(){const os=canvas.getActiveObjects().filter(o=>o.kind!=='photo');if(!os.length)return;os.forEach(o=>{o.ref=!o.ref;o.set('opacity',o.ref?.35:1)});canvas.requestRenderAll();after();renderProps();showDim(canvas.getActiveObject())}
 $('btnRef').addEventListener('click',toggleRef);
 $('btnDel').addEventListener('click',del);
 function del(){canvas.getActiveObjects().forEach(o=>canvas.remove(o));canvas.discardActiveObject();canvas.requestRenderAll()}
@@ -484,6 +494,7 @@ $('btnFit').addEventListener('click',fitView);
 function fld(k,label,v,step=1){return `<label>${label}<input data-k="${k}" type="number" step="${step}" value="${+(+v).toFixed(2)}"></label>`}
 function renderProps(){const o=canvas.getActiveObject(),box=$('props');
  if(!o||o.type==='activeSelection'){box.innerHTML=`<h2>Parte</h2><div class="muted">${o?dims(o)+' seleccionadas. Arrastralas juntas o borralas.':'Tocá una parte del plano para editarla con números.'}</div>`;return}
+ if(o.kind==='photo'){box.innerHTML='<h2>Foto de fondo</h2><div class="muted">Movela o escalala desde las esquinas. Cuando termines, tocá de nuevo "Mover / escalar la foto" para fijarla.</div>';return}
  const ps=`<label>Perfil<select data-k="p">${PROFILES.map(p=>`<option value="${p.id}"${p.id===o.p?' selected':''}>${p.name}</option>`).join('')}</select></label>`;
  let h='';
  if(o.kind==='seg')h=ps+fld('len','Largo cm',o.width*o.scaleX/PX)+fld('angle','Giro °',o.angle);
@@ -537,12 +548,22 @@ function renderPrices(){
 function saveCfg(){try{localStorage.setItem('herreria.cfg',JSON.stringify(S))}catch(e){}}
 $('labor').addEventListener('input',e=>{S.labor=+e.target.value;renderBom();saveCfg()});
 $('extras').addEventListener('input',e=>{S.extras=+e.target.value;renderBom();saveCfg()});
+// ---- foto de fondo para calcar (vive en el JSON de la cara, no se cuenta ni va al 3D) ----
+function photoObj(){return canvas.getObjects().find(o=>o.kind==='photo')}
+function photoUI(){const im=photoObj();$('photoCtl').hidden=!im;if(im){$('photoW').value=Math.round(im.width*im.scaleX/PX);$('photoOp').value=Math.round(im.opacity*100);$('photoAdj').classList.toggle('on',!!im.evented)}}
+$('photoBg').addEventListener('change',e=>{const f=e.target.files[0];if(!f)return;const img=new Image();img.onload=()=>{const k=Math.min(1,1400/Math.max(img.width,img.height)),c=document.createElement('canvas');c.width=img.width*k;c.height=img.height*k;c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+  fabric.Image.fromURL(c.toDataURL('image/jpeg',.7),im=>{const old=photoObj();if(old)canvas.remove(old);const [W]=FACES[cur].dims();im.set({kind:'photo',left:0,top:0,opacity:.55});decorate(im);im.scale(W*PX/im.width);canvas.add(im);canvas.sendToBack(im);photoUI();after();fitView()})};img.src=URL.createObjectURL(f);e.target.value=''});
+$('photoW').addEventListener('change',()=>{const im=photoObj();if(!im)return;im.scale(Math.max(5,+$('photoW').value)*PX/im.width);im.setCoords();canvas.requestRenderAll();after()});
+$('photoOp').addEventListener('input',()=>{const im=photoObj();if(!im)return;im.set('opacity',+$('photoOp').value/100);canvas.requestRenderAll();after()});
+$('photoAdj').addEventListener('click',()=>{const im=photoObj();if(!im)return;const on=!im.evented;im.set({selectable:on,evented:on});$('photoAdj').classList.toggle('on',on);if(on){canvas.setActiveObject(im)}else{canvas.discardActiveObject()}canvas.requestRenderAll()});
+$('photoDel').addEventListener('click',()=>{const im=photoObj();if(im){canvas.remove(im);canvas.discardActiveObject();photoUI();after()}});
+canvas.on('object:modified',e=>{if(e.target&&e.target.kind==='photo')photoUI()});
 function summary(){const r=calc(bomObjects(),S);return ['PRESUPUESTO HERRERÍA','',...r.rows.map(x=>`• ${x.name}: ${x.bars} barra(s) de 6 m (${num(x.m,1)} m útiles, ${num(x.kg)} kg) ${fmt(x.cost)}`),...r.sheetRows.map(x=>`• ${x.name}: ${x.hojas} hoja(s) de 1x2 m (${num(x.m2,2)} m², ${num(x.kg)} kg) ${fmt(x.cost)}`),...r.catRows.map(x=>`• ${x.name} x${x.n}: ${fmt(x.cost)}`),'',`Peso total: ${num(r.kg)} kg`,`Material: ${fmt(r.mat)}`,`Mano de obra: ${S.labor}%`,`Pintura y consumibles: ${fmt(S.extras)}`,`TOTAL: ${fmt(r.total)}`].join('\n')}
 $('btnCopy').addEventListener('click',async()=>{const t=summary();try{await navigator.clipboard.writeText(t);$('btnCopy').textContent='Copiado'}catch(e){const ta=document.createElement('textarea');ta.value=t;ta.style.width='100%';$('btnCopy').after(ta);ta.select();$('btnCopy').textContent='Seleccioná y copiá el texto'}setTimeout(()=>$('btnCopy').textContent='Copiar presupuesto para WhatsApp',2500)});
 
 // ---- ejemplo ----
 async function resetViews(){views.forEach(v=>v.json=null);cur=0;undo=[];await load(null);renderTabs()}
-$('btnClear').addEventListener('click',()=>{real().forEach(o=>canvas.remove(o));canvas.discardActiveObject();after();fitView()});
+$('btnClear').addEventListener('click',()=>{real().filter(o=>o.kind!=='photo').forEach(o=>canvas.remove(o));canvas.discardActiveObject();after();fitView()});
 
 
 // ---- foto a estimado ----
@@ -633,7 +654,7 @@ function xf2(o){const a=(o.angle||0)*Math.PI/180,sx=o.scaleX||1,sy=o.scaleY||1,c
 // i de cara = -2-k para distinguirlas de las partes; el clic en 3D lleva a editar esa cara.
 let CURVE=0;
 function face3d(f,k,ex){const all=viewObjs(f.id);if(!all.length)return;const pl=PLANES[f.pl],at0=f.at(),i=-2-k,src=f.name,N=M[AXS[pl.n]];let cid=null;
- all.forEach((o,oi)=>{if(o.ref)return;const fx=xf2(o),w=o.kind==='sheet'?Math.max(SH[o.p]?SH[o.p].e/10:.2,.6):(o.p&&P[o.p]?Math.max(P[o.p].w,.8):1),at=Math.min(N-w/2,Math.max(w/2,at0-f.out*(w/2+(o.depth||0)))),T=(lx,ly)=>{const [x,y]=fx(lx,ly),[u,v]=f.map(x,y);return p3(pl,u,v,at)},W=o.width||0,H=o.height||0,sx=o.scaleX||1,sy=o.scaleY||1,ins=2*(o.inset||0);let L=null;
+ all.forEach((o,oi)=>{if(o.ref||o.kind==='photo')return;const fx=xf2(o),w=o.kind==='sheet'?Math.max(SH[o.p]?SH[o.p].e/10:.2,.6):(o.p&&P[o.p]?Math.max(P[o.p].w,.8):1),at=Math.min(N-w/2,Math.max(w/2,at0-f.out*(w/2+(o.depth||0)))),T=(lx,ly)=>{const [x,y]=fx(lx,ly),[u,v]=f.map(x,y);return p3(pl,u,v,at)},W=o.width||0,H=o.height||0,sx=o.scaleX||1,sy=o.scaleY||1,ins=2*(o.inset||0);let L=null;
   const line=(a,b)=>ex.push({t:'bar',a:T(...a),b:T(...b),w,i,oi,p:o.p,qty:Math.max(1,o.qty||1),curve:cid,src,L}),chain=pts=>{cid=cid||++CURVE;for(let k=1;k<pts.length;k++)line(pts[k-1],pts[k]);cid=null};
   if(o.kind==='seg')line([0,H/2],[W,H/2]);
   else if(o.kind==='frame'){L=W*sx/PX+ins;line([0,0],[W,0]);line([W,H],[0,H]);L=H*sy/PX+ins;line([W,0],[W,H]);line([0,H],[0,0]);L=null}
@@ -800,7 +821,7 @@ function renderPlist(){const L=$('plist');
   row.querySelectorAll('[data-k]').forEach(inp=>inp.addEventListener('change',()=>{const q=M.parts[i],k=inp.dataset.k,v=inp.type==='number'?+inp.value:inp.value;
    if(k==='axis'){normBar(q);q.axis=v}else if(k.startsWith('pos.')){normBar(q);q.pos[k.slice(4)]=Math.max(0,v)}else if(k==='plane'){q.plane=v;q.at=M[AXS[PLANES[v].n]];if(v==='xz')q.at=M.H}else if(k==='at'){q.at=Math.min(M[AXS[PLANES[q.plane].n]],Math.max(0,v))}else if(k==='sp'){q.sp=Math.max(.5,v)}else if(k==='off'){q.off=Math.max(0,v)}else q[k]=v;update3()}))});
  L.querySelectorAll('[data-del]').forEach(b=>b.addEventListener('click',()=>{M.parts.splice(+b.dataset.del,1);sel3=null;update3()}));
- $('facelist').innerHTML='<span class="lab muted">Caras dibujadas en 2D</span>'+FACES.map((f,k)=>{const n=viewObjs(f.id).filter(o=>!o.ref).length;return `<button data-face="${k}" class="${sel3===-2-k?'on':''}" style="font-size:12px;padding:4px 8px">${f.name}: ${n?n+' partes':'vacía'} · editar</button>`}).join('')
+ $('facelist').innerHTML='<span class="lab muted">Caras dibujadas en 2D</span>'+FACES.map((f,k)=>{const n=viewObjs(f.id).filter(o=>!o.ref&&o.kind!=='photo').length;return `<button data-face="${k}" class="${sel3===-2-k?'on':''}" style="font-size:12px;padding:4px 8px">${f.name}: ${n?n+' partes':'vacía'} · editar</button>`}).join('')
   +(selObj?`<div class="part on"><b style="font-family:var(--font-d)">Pieza de ${FACES[selObj.k].name}</b><span class="lab">hacia adentro de la caja</span><input id="fsDepth" type="number" value="${Math.round(faceDepth(selObj.k,selObj.oi))}"><span class="muted">cm · o arrastrala en el 3D</span></div>`:'');
  const fd=$('fsDepth');if(fd)fd.addEventListener('change',()=>{setFaceDepth(selObj.k,selObj.oi,+fd.value);if(selObj.k===cur)after();else persist();update3()});
  $('facelist').querySelectorAll('[data-face]').forEach(b=>b.addEventListener('click',()=>{const k=+b.dataset.face;setMode('2d');if(cur!==k)switchView(k)}))}
