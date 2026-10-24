@@ -114,10 +114,11 @@ th{font-family:var(--font-d);font-weight:600;letter-spacing:.04em;text-transform
   <button id="btnGal" class="primary">Modelos base</button>
   <button id="btnShot">Imagen para el cliente</button>
 </header>
+<div id="backup" hidden style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;padding:6px 0;border-bottom:1px solid var(--line);font-size:13px"><span id="backupMsg"></span><button id="backupAll">Exportar todo</button><button id="backupLater" title="Recordar en una semana">Más tarde</button></div>
 <div id="prj" hidden style="position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:16px">
   <div class="box" style="max-width:min(1040px,96vw);max-height:92vh;overflow:auto;width:100%">
-    <div class="row" style="justify-content:space-between"><h2>Proyectos</h2><div class="row"><button id="prNew" class="primary">Nuevo proyecto</button><button id="prImport">Importar</button><button id="prClose">Cerrar</button></div></div>
-    <div class="muted">Se guardan solos en este navegador. Para llevarlos a otro aparato o mandarlos, usá Exportar e Importar.</div>
+    <div class="row" style="justify-content:space-between"><h2>Proyectos</h2><div class="row"><button id="prNew" class="primary">Nuevo proyecto</button><button id="prExportAll">Exportar todo</button><button id="prImport">Importar</button><button id="prClose">Cerrar</button></div></div>
+    <div class="muted">Se guardan solos en este navegador. Para llevarlos a otro aparato, mandarlos o tener un respaldo, usá Exportar e Importar. <span id="iosHint" hidden>En iPhone, agregá este sitio a la pantalla de inicio (Compartir → Agregar a inicio): si no, Safari borra lo guardado a los 7 días sin usarlo.</span></div>
     <div id="prIO" hidden class="box"><div class="muted" id="prIOmsg"></div><textarea id="prText" style="min-height:70px"></textarea><div class="row"><button id="prTextLoad">Cargar lo pegado</button><button id="prTextCopy">Copiar</button><input type="file" id="prFile" accept=".json,application/json"></div></div>
     <div class="gal" id="prGrid"></div>
   </div>
@@ -835,10 +836,24 @@ function renderPrj(){savePr();const G=$('prGrid');
  G.querySelectorAll('[data-del]').forEach(b=>b.addEventListener('click',()=>{if(b.dataset.armed){const i=PR.list.findIndex(x=>x.id===b.dataset.del);const wasCur=PR.list[i].id===PR.cur;PR.list.splice(i,1);
    if(wasCur){PR.cur=null;if(PR.list.length)openPr(PR.list[0].id);else{newPr();applyTpl(TPL[1])}}renderPrj()}else{b.dataset.armed='1';b.textContent='¿Borrar? Sí';b.classList.add('warn');setTimeout(()=>{b.dataset.armed='';b.textContent='Borrar';b.classList.remove('warn')},3000)}}))}
 async function exportPr(p){const {thumb,thumbAt,...clean}=p;const txt=JSON.stringify({app:'cotizador-herreria',v:1,project:clean}),fname=(p.name||'proyecto').replace(/[^\w\-]+/g,'_')+'.json';$('prIO').hidden=false;$('prText').value=txt;
+ p.exportedAt=Date.now();savePr();backupCheck();
  if(INART){$('prIOmsg').textContent='Copiá este texto y pegalo en "Importar" en el otro aparato.';try{const dl=await claude.use('downloads');if(dl){await dl.save({filename:fname,data:txt});$('prIOmsg').textContent='Archivo guardado. También podés copiar el texto.'}}catch(e){}}
  else{$('prIOmsg').textContent='Se descargó el archivo. También podés copiar el texto.';const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([txt],{type:'application/json'}));a.download=fname;document.body.appendChild(a);a.click();a.remove()}}
-function importText(txt){let j;try{j=JSON.parse(txt)}catch(e){$('prIOmsg').textContent='Eso no es un proyecto válido.';return}const p=j&&j.project;if(!p||!p.M||!p.M.parts){$('prIOmsg').textContent='Eso no es un proyecto válido.';return}
- p.id=uid();p.updated=Date.now();p.faces=p.faces||{};delete p.thumb;PR.list.unshift(p);$('prIOmsg').textContent='Importado: '+p.name;$('prText').value='';renderPrj()}
+function importText(txt){let j;try{j=JSON.parse(txt)}catch(e){$('prIOmsg').textContent='Eso no es un proyecto válido.';return}const list=j&&(j.projects||(j.project?[j.project]:null));
+ if(!list||!list.length||list.some(p=>!p||!p.M||!p.M.parts)){$('prIOmsg').textContent='Eso no es un proyecto válido.';return}
+ list.forEach(p=>{p.id=uid();p.updated=Date.now();p.exportedAt=p.updated;p.faces=p.faces||{};delete p.thumb;PR.list.unshift(p)});$('prIOmsg').textContent='Importado: '+list.map(p=>p.name).join(', ');$('prText').value='';renderPrj()}
+async function exportAll(){savePr();const now=Date.now(),clean=PR.list.map(({thumb,thumbAt,...p})=>p),txt=JSON.stringify({app:'cotizador-herreria',v:1,projects:clean}),fname='proyectos-herreria-'+new Date().toISOString().slice(0,10)+'.json';
+ $('prj').hidden=false;$('prIO').hidden=false;$('prText').value=txt;
+ if(INART){$('prIOmsg').textContent='Copiá este texto y guardalo (o pegalo en "Importar" en otro aparato).';try{const dl=await claude.use('downloads');if(dl){await dl.save({filename:fname,data:txt});$('prIOmsg').textContent='Archivo guardado con todos los proyectos.'}}catch(e){}}
+ else{$('prIOmsg').textContent='Se descargó un archivo con todos los proyectos. Guardalo en Drive, WhatsApp o donde quieras.';const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([txt],{type:'application/json'}));a.download=fname;document.body.appendChild(a);a.click();a.remove()}
+ PR.list.forEach(p=>p.exportedAt=now);PR.snooze=0;savePr();backupCheck()}
+// Aviso de respaldo: proyectos con cambios no exportados desde hace más de 3 días.
+function backupCheck(){const now=Date.now(),old=PR.list.filter(p=>p.updated>(p.exportedAt||0)&&now-p.updated>3*864e5);
+ const show=old.length&&!(PR.snooze&&now<PR.snooze);$('backup').hidden=!show;
+ if(show){const d=Math.floor((now-Math.min(...old.map(p=>p.updated)))/864e5);$('backupMsg').textContent=`${old.length} proyecto${old.length>1?'s':''} sin respaldo desde hace ${d} día${d>1?'s':''}. Si se borran los datos del navegador, se pierden.`}}
+$('backupAll').addEventListener('click',exportAll);$('prExportAll').addEventListener('click',exportAll);
+$('backupLater').addEventListener('click',()=>{PR.snooze=Date.now()+7*864e5;savePr();backupCheck()});
+if(/iPhone|iPad/.test(navigator.userAgent)&&!navigator.standalone)$('iosHint').hidden=false;
 $('btnPrj').addEventListener('click',()=>{$('prj').hidden=false;$('prIO').hidden=true;renderPrj()});
 $('prClose').addEventListener('click',()=>{$('prj').hidden=true});
 $('prNew').addEventListener('click',async()=>{$('prj').hidden=true;savePr();newPr();M={W:150,H:120,D:3,p:'tu30',edges:{top:false,bot:false,vert:false},parts:[]};views.forEach(v=>v.json=null);cur=0;sel3=null;renderForm();frameCam();await load(null);undo=[];hist3=[];renderTabs();update3();fitView();openGal()});
@@ -853,5 +868,6 @@ theme();fit();renderPrices();
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change',theme);
 loadPR();
 if(PR.cur&&curPr()){openPr(PR.cur)}else{newPr('Proyecto 1');applyTpl(TPL[1]).then(()=>setTimeout(openGal,400))}
+backupCheck();
 renderProps();setMode(S.mode||'2d');
 </script>
