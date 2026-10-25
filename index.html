@@ -713,7 +713,8 @@ let orbit={th:.7,ph:1.05,r:280};
 const ray=new THREE.Raycaster(),mouse=new THREE.Vector2();
 function hex(v){return new THREE.Color(css(v))}
 function center(){return new THREE.Vector3(M.W/2,M.H/2,M.D/2)}
-function buildScene(){scene.remove(group);group=new THREE.Group();const st=hex('--steel'),acc=hex('--accent'),{ms,sh,ex}=members();
+let EMPTY=false;
+function buildScene(){scene.remove(group);group=new THREE.Group();const st=hex('--steel'),acc=hex('--accent'),{ms,sh,ex}=members();EMPTY=!ms.length&&!sh.length&&!ex.length;
  const X=new THREE.Vector3(1,0,0),Z=new THREE.Vector3(0,0,1),hot=(i,oi)=>i===sel3&&(selObj?selObj.oi===oi:true),mat=(i,ghost,oi)=>new THREE.MeshLambertMaterial({color:hot(i,oi)?acc:st,transparent:!!ghost,opacity:ghost?.75:1});
  const bar=(a,b,w,i,oi)=>{const A=new THREE.Vector3(...a),B=new THREE.Vector3(...b),len=A.distanceTo(B);if(len<.05)return;const mesh=new THREE.Mesh(new THREE.BoxGeometry(len,w,w),mat(i,false,oi));mesh.position.copy(A.clone().add(B).multiplyScalar(.5));mesh.quaternion.setFromUnitVectors(X,B.clone().sub(A).normalize());mesh.userData.i=i;mesh.userData.oi=oi;group.add(mesh)};
  for(const e of ex){if(e.t==='bar')bar(e.a,e.b,e.w,e.i,e.oi);
@@ -728,7 +729,7 @@ function buildScene(){scene.remove(group);group=new THREE.Group();const st=hex('
   const mesh=new THREE.Mesh(new THREE.BoxGeometry(dims.x,dims.y,dims.z),new THREE.MeshLambertMaterial({color:x.i===sel3?acc:st,transparent:true,opacity:.75}));
   const c={x:0,y:0,z:0};c[x.pl.u]=x.w/2;c[x.pl.v]=x.h/2;c[x.pl.n]=x.at;mesh.position.set(c.x,c.y,c.z);mesh.userData.i=x.i;group.add(mesh)}
  const gs=Math.max(M.W,M.D)*2,grid=new THREE.GridHelper(gs,Math.round(gs/10),css('--grid'),css('--grid'));grid.position.set(M.W/2,-.5,M.D/2);grid.userData.i=null;group.add(grid);
- renderer&&renderer.setClearColor(hex('--panel'));scene.add(group);$('v3dim').textContent=$('minidim').textContent=`${M.W} × ${M.H} × ${M.D} cm exteriores`;buildDims()}
+ renderer&&renderer.setClearColor(hex('--panel'));scene.add(group);$('v3dim').textContent=$('minidim').textContent=EMPTY?`Caja de ${M.W} × ${M.H} × ${M.D} cm, todavía sin hierros`:`${M.W} × ${M.H} × ${M.D} cm exteriores`;buildDims()}
 // Cotas exteriores: línea de cota desplazada, líneas de extensión desde las esquinas y marcas en los extremos.
 function buildDims(){scene.remove(dimG);dimG=new THREE.Group();const {W,H,D}=M,o=Math.max(8,Math.max(W,H,D)*.09),t=Math.max(1.5,o*.15),pts=[];
  const L=(a,b)=>pts.push(new THREE.Vector3(...a),new THREE.Vector3(...b));
@@ -738,14 +739,14 @@ function buildDims(){scene.remove(dimG);dimG=new THREE.Group();const {W,H,D}=M,o
  L([W+o,H+o,0],[W+o,H+o,D]);L([W,H,0],[W+o,H+o,0]);L([W,H,D],[W+o,H+o,D]);L([W+o-t,H+o,0],[W+o+t,H+o,0]);L([W+o-t,H+o,D],[W+o+t,H+o,D]);
  // alto: a la derecha y adelante
  L([W+o,0,D+o],[W+o,H,D+o]);L([W,0,D],[W+o,0,D+o]);L([W,H,D],[W+o,H,D+o]);L([W+o-t,0,D+o],[W+o+t,0,D+o]);L([W+o-t,H,D+o],[W+o+t,H,D+o]);
- const g=new THREE.BufferGeometry().setFromPoints(pts);dimG.add(new THREE.LineSegments(g,new THREE.LineBasicMaterial({color:hex('--accent')})));dimG.visible=S.dims!==false;scene.add(dimG);
+ const g=new THREE.BufferGeometry().setFromPoints(pts);dimG.add(new THREE.LineSegments(g,new THREE.LineBasicMaterial({color:hex('--accent')})));dimG.visible=S.dims!==false&&!EMPTY;scene.add(dimG);
  dimG.userData.mid=[[W/2,H+o,D+o,W],[W+o,H+o,D/2,D],[W+o,H/2,D+o,H]]}
-function placeCotas(mw,h){const host=c3.parentElement,show=S.dims!==false&&dimG.userData.mid;
+function placeCotas(mw,h){const host=c3.parentElement,show=S.dims!==false&&!EMPTY&&dimG.userData.mid;
  COTAS.forEach((d,k)=>{if(d.parentElement!==host)host.appendChild(d);if(!show){d.style.display='none';return}const [x,y,z,val]=dimG.userData.mid[k],n=new THREE.Vector3(x,y,z).project(cam);
   if(n.z>1){d.style.display='none';return}d.style.display='block';d.textContent=`${num(val)} cm`;d.style.left=((n.x+1)/2*mw)+'px';d.style.top=((1-n.y)/2*h)+'px'})}
 function size3(){if(!renderer)return;const box=c3.parentElement,w=box.clientWidth,h=box.clientHeight;if(w&&h&&(c3.width!==w||c3.height!==h))renderer.setSize(w,h,false)}
 function placeCam(aspect){const c=center();cam.aspect=aspect;cam.updateProjectionMatrix();cam.position.set(c.x+orbit.r*Math.sin(orbit.ph)*Math.sin(orbit.th),c.y+orbit.r*Math.cos(orbit.ph),c.z+orbit.r*Math.sin(orbit.ph)*Math.cos(orbit.th));cam.lookAt(c)}
-function draw3(){if(!renderer)return;size3();const w=c3.width,h=c3.height;if(!w||!h)return;renderer.setScissorTest(true);dimG.visible=S.dims!==false;
+function draw3(){if(!renderer)return;size3();const w=c3.width,h=c3.height;if(!w||!h)return;renderer.setScissorTest(true);dimG.visible=S.dims!==false&&!EMPTY;
  const c=center(),mini=c3.parentElement===$('mini3'),mw=mini?w:Math.floor(w*.68);
  placeCam(mw/h);
  renderer.setViewport(0,0,mw,h);renderer.setScissor(0,0,mw,h);renderer.render(scene,cam);placeCotas(mw,h);if(mini)return;
@@ -845,6 +846,7 @@ document.querySelectorAll('[data-padd]').forEach(b=>b.addEventListener('click',(
 // ===== Modelos base: caja + partes interiores + caras dibujadas. Se eligen de la galería y se retocan. =====
 const F=(k,o,x=0,y=0,more={})=>({k,o,x,y,...more});
 const TPL=[
+ {id:'vacio',name:'Empezar vacío',desc:'Solo la caja con sus medidas, sin hierros. Vos armás todo.',M:{W:100,H:100,D:50,p:'tu20',edges:{top:false,bot:false,vert:false},parts:[]}},
  {id:'reja',name:'Reja simple',desc:'Marco de tubo 30, barrotes cuadrado 12 cada 12 cm',M:{W:150,H:120,D:3,p:'tu30',edges:{top:false,bot:false,vert:false},parts:[]},
   faces:{frente:[F('frame',{p:'tu30',w:150,h:120}),F('bars',{p:'cu12',w:150,h:120,sp:12})]}},
  {id:'reja2',name:'Reja con volutas',desc:'Travesaño, volutas y arco de planchuela, puntas de lanza',M:{W:150,H:120,D:3,p:'tu30',edges:{top:false,bot:false,vert:false},parts:[]},
