@@ -17,10 +17,15 @@ A(bh.length===9&&bh[0][1]===150,'bars h');
 // 12 piezas de 120: 5 por barra no entra por el kerf (601.2) -> 4 por barra -> 3 barras
 A(pack(Array(12).fill(120)).length===3,'pack');
 A(pack([700]).length===1,'over');
-const S={prices:{},catPrices:{},labor:100,extras:0};
+const S={prices:{},catPrices:{},extras:0,f:{rate:0,weldPrice:0,discPrice:0,paintPrice:0}};
 const r=calc([{kind:'bars',p:'cu12',bw:cm(150),bh:cm(120),sp:12,dir:'v'},{kind:'cat',catId:'lanza'},{kind:'cat',catId:'lanza'}],S);
 A(r.rows[0].bars===3&&Math.abs(r.rows[0].kg-14.4*1.13)<1e-6,'calc kg');
-A(r.catRows[0].n===2&&r.total===(3*18500+2*1200)*2,'total');
+A(r.catRows[0].n===2&&r.total===3*18500+2*1200,'total');
+// trabajo: 12 barrotes de 120 (cu12, 1.2 cm): 12 cortes, 4·1.2·120·12/1e4 m² de pintura; 24 uniones de 1.2 cm → 24·1.2·2/100 m de cordón
+const w=work([{kind:'bars',p:'cu12',bw:cm(150),bh:cm(120),sp:12,dir:'v'}],{f:{rate:10000}},{n:24,cm:28.8});
+A(w.cuts===12&&Math.abs(w.m2-0.6912)<1e-9&&Math.abs(w.weldM-0.576)<1e-9&&w.discs===1,'work '+JSON.stringify(w));
+A(Math.abs(w.hours-(12*3+24*6+0.6912*20)/60)<1e-9&&Math.abs(w.labor-w.hours*10000)<1e-6,'work hours');
+A(calc([{kind:'sheet',p:'ch2',width:cm(80),height:cm(50)}],S).wk.cuts===4,'sheet cuts');
 // ya contado no suma; cantidad multiplica
 A(pieces({kind:'seg',p:'tu30',width:cm(100),ref:true}).length===0,'ref');
 A(pieces({kind:'seg',p:'tu30',width:cm(100),qty:4}).length===4,'qty');
