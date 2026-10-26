@@ -10,14 +10,13 @@ Un solo archivo HTML. Sin build, sin backend. Se abre en el navegador y guarda e
 
 - **Caja y partes · 3D.** Definís ancho, alto y profundidad, qué aristas existen (una mesa no tiene aristas abajo) y agregás partes interiores a una cara: grillas, travesaños, estantes, chapa. Las arrastrás en el 3D, las movés con las flechas, deshacés con Ctrl+Z. Las vistas Frente, Lateral y Planta se generan del mismo modelo.
 - **Piezas hacia adentro.** Toda pieza dibujada en una cara puede hundirse N cm hacia el interior de la caja, desde el panel o arrastrándola en el 3D. El travesaño del 3D es una barra libre en un eje, ubicada por las otras dos coordenadas y arrastrable en ambas.
-- **Foto de fondo.** En cada cara se puede cargar la foto del cliente, decir cuánto mide de ancho y calcar las partes encima. No se cuenta ni va al 3D; se guarda con el proyecto.
 - **Dibujar caras · 2D.** Las seis caras de la caja se dibujan con partes arrastrables: marcos, barrotes con paso, tramos, arcos y volutas con longitud desarrollada real, chapa y piezas de catálogo. Lo que dibujás aparece montado en el 3D al instante, y las otras caras muestran su proyección como fantasma para alinear.
 - **Medidas exteriores.** La caja y las caras se miden de borde a borde del hierro, alto total hasta el piso. Los hierros van por dentro de esa medida y se cuentan por su largo exterior. Cotas con líneas de extensión y etiquetas en el 3D, y medidas de cada cara en el plano.
 - **Materiales.** Cada hierro existe una sola vez en el modelo. Si una arista de la caja y el borde de un marco dibujado ocupan el mismo lugar, se cuenta uno. Corte en barras de 6 m (first-fit decreasing, kerf 3 mm) con sobrantes, kg por tabla de perfiles, chapa en hojas de 1×2 m, catálogo por unidad, mano de obra y extras. Desglose por origen para auditar.
-- **Modelos base.** Galería de doce modelos (rejas, portón, puerta, baranda, mesas, banqueta, rack, estantería, parrilla, brasero) con miniaturas renderizadas; elegís uno y lo retocás.
+- **Modelos base.** Galería con miniaturas renderizadas: vacío, rejas, portón, puerta, baranda, mesas, banqueta, rack, estantería, parrilla, chulengo (medio tacho de 200 L con parrilla y chimenea), pérgola, banco de trabajo y brasero. Elegís uno y lo retocás.
+- **Tambor / cilindro.** Parte 3D para tachos y caños grandes: eje, centro, diámetro, largo, medio o entero; se cuenta como pieza de catálogo (tacho, chimenea) o como chapa por el manto.
 - **Proyectos.** Varios proyectos con nombre, guardados solos en el navegador, con duplicar, borrar y exportar/importar como archivo o texto para pasarlos a otro aparato.
 - **Salida.** Presupuesto en texto para WhatsApp, lista de cortes para el taller (qué cortar, cuántos, de qué perfil, y cómo repartir cada barra, con casillas para tildar) e imagen del 3D o del plano para el cliente.
-- **Estimar desde una foto.** Con una clave API de Anthropic cargada en el navegador, el modelo propone medidas, perfiles y cantidades a partir de la foto que mandó el cliente y lo arma en el plano para corregir.
 
 ![Caras 2D con el 3D al lado](docs/caras-2d.png)
 
