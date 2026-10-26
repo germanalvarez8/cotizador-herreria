@@ -18,6 +18,7 @@ Un solo archivo HTML. Sin build, sin backend. Se abre en el navegador y guarda e
 - **Mis piezas.** Una selección del plano guardada con nombre y miniatura para insertarla en cualquier cara de cualquier proyecto (un pie de lámpara, un brazo a cierto ángulo). Viajan con Exportar todo.
 - **Tambor / cilindro.** Parte 3D para tachos y caños grandes: eje, centro, diámetro, largo, medio o entero; se cuenta como pieza de catálogo (tacho, chimenea) o como chapa por el manto.
 - **Proyectos.** Varios proyectos con nombre, guardados solos en el navegador, con duplicar, borrar y exportar/importar como archivo o texto. **Compartir** genera un link con el proyecto comprimido adentro: quien lo abre recibe una copia (solo en hosting propio, no dentro del visor de artifacts).
+- **Bisagras.** Tapas de tambor, hojas de portón o puerta dibujadas en 2D y cualquier parte plana (marco, chapa, grilla) pueden colgar de una bisagra en uno de sus lados, con ángulo de apertura. El botón "Abrir / cerrar" del 3D las anima; las bisagras se cuentan solas en materiales (2 por hoja o tapa).
 - **Aristas individuales.** Una pata o arista de la caja se quita tocándola en el 3D; se restauran todas desde el panel.
 - **Salida.** Presupuesto en texto para WhatsApp, lista de cortes para el taller (qué cortar, cuántos, de qué perfil, y cómo repartir cada barra, con casillas para tildar) e imagen del 3D o del plano para el cliente.
 
