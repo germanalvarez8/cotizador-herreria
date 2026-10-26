@@ -261,8 +261,8 @@ const CATALOG=[
  {id:'roseton',name:'Rosetón',price:1400,shape:'ring',s:8},
  {id:'bocha',name:'Bocha / esfera',price:800,shape:'ball',s:5},
  {id:'hoja',name:'Hoja decorativa',price:1000,shape:'leaf',s:10},
- {id:'tacho200',name:'Tacho de 200 L',price:30000,shape:'ring',s:57},
- {id:'chimenea',name:'Chimenea de chapa 1 m',price:18000,shape:'leaf',s:10},
+ {id:'tacho200',name:'Tacho de 200 L',price:30000,shape:'ring',s:57,only3d:true},
+ {id:'chimenea',name:'Chimenea de chapa 1 m',price:18000,shape:'leaf',s:10,only3d:true},
  {id:'bisagra',name:'Bisagra reforzada',price:2500,shape:'leaf',s:6},
  {id:'rueda',name:'Rueda de hierro',price:9000,shape:'ball',s:15},
 ];
@@ -454,7 +454,7 @@ document.addEventListener('keydown',e=>{if(S.mode!=='2d'||/INPUT|SELECT|TEXTAREA
  if((e.ctrlKey||e.metaKey)&&e.key==='d'){e.preventDefault();dup()}
  if(e.key==='r'||e.key==='R')toggleRef()});
 document.querySelectorAll('[data-add]').forEach(b=>b.addEventListener('click',()=>add(b.dataset.add)));
-$('catButtons').innerHTML=CATALOG.map(c=>`<button data-cat="${c.id}">${c.name}</button>`).join('');
+$('catButtons').innerHTML=CATALOG.filter(c=>!c.only3d).map(c=>`<button data-cat="${c.id}">${c.name}</button>`).join('')+'<span class="muted">El tacho de 200 L y la chimenea se agregan en el modo 3D como "Tambor / cilindro".</span>';
 document.querySelectorAll('[data-cat]').forEach(b=>b.addEventListener('click',()=>add('cat',{catId:b.dataset.cat})));
 $('curProfile').innerHTML=PROFILES.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');$('curProfile').value='cu12';
 $('snap').value=S.snap;$('snap').addEventListener('change',e=>{S.snap=+e.target.value;saveCfg();grid()});
@@ -485,7 +485,7 @@ function renderProps(){const o=canvas.getActiveObject(),box=$('props');
  if(o.kind==='bars')h=ps+fld('w','Ancho zona cm',o.bw*o.scaleX/PX)+fld('h','Alto zona cm',o.bh*o.scaleY/PX)+fld('sp','Paso cm',o.sp)+`<label>Dirección<select data-k="dir"><option value="v"${o.dir==='v'?' selected':''}>Verticales</option><option value="h"${o.dir==='h'?' selected':''}>Horizontales</option></select></label>`+fld('angle','Giro °',o.angle);
  if(o.kind==='arc')h=ps+fld('r','Radio cm',o.r*o.scaleX)+fld('sweep','Abertura °',o.sweep,5)+fld('angle','Giro °',o.angle);
  if(o.kind==='vol')h=ps+fld('r1','Radio externo cm',o.r1*o.scaleX,.5)+fld('r0','Radio interno cm',o.r0*o.scaleX,.5)+fld('turns','Vueltas',o.turns,.25)+fld('angle','Giro °',o.angle);
- if(o.kind==='cat')h=`<label>Pieza<select data-k="catId">${CATALOG.map(c=>`<option value="${c.id}"${c.id===o.catId?' selected':''}>${c.name}</option>`).join('')}</select></label>`+fld('angle','Giro °',o.angle);
+ if(o.kind==='cat')h=`<label>Pieza<select data-k="catId">${CATALOG.filter(c=>!c.only3d||c.id===o.catId).map(c=>`<option value="${c.id}"${c.id===o.catId?' selected':''}>${c.name}</option>`).join('')}</select></label>`+fld('angle','Giro °',o.angle);
  if(o.kind==='sheet')h=`<label>Chapa<select data-k="p">${SHEETS.map(x=>`<option value="${x.id}"${x.id===o.p?' selected':''}>${x.name}</option>`).join('')}</select></label>`+fld('w','Ancho cm',o.width*o.scaleX/PX)+fld('h','Alto cm',o.height*o.scaleY/PX)+fld('angle','Giro °',o.angle);
  h+=fld('qty','Cantidad',o.qty||1)+fld('depth','Hacia adentro cm',o.depth||0);
  box.innerHTML=`<h2>Parte</h2><div><b>${dims(o)}</b></div><div class="row">${h}</div><div class="row"><button id="pRef">${o.ref?'Volver a contar en esta vista':'Marcar como ya contado en otra vista'}</button></div><div class="muted">Cantidad: piezas iguales una detrás de otra en esta vista. Hacia adentro: 0 es sobre la cara; más centímetros la hunden hacia el interior de la caja (también se arrastra en el 3D).</div>`;
