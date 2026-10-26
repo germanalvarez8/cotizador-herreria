@@ -151,6 +151,11 @@ th{font-family:var(--font-d);font-weight:600;letter-spacing:.04em;text-transform
     <button data-add="sheet">Pieza de chapa</button>
     <h2>Piezas de catálogo</h2>
     <div id="catButtons" style="display:contents"></div>
+    <h2>Mis piezas</h2>
+    <span class="muted">Seleccioná partes del plano, ponele nombre y guardalas para reusarlas en cualquier proyecto.</span>
+    <input id="pieceName" placeholder="Nombre de la pieza">
+    <button id="btnPieceSave">Guardar la selección como pieza</button>
+    <div id="pieces" style="display:flex;flex-direction:column;gap:4px"></div>
   </aside>
 
   <section class="stage" id="stage2d">
@@ -227,6 +232,12 @@ th{font-family:var(--font-d);font-weight:600;letter-spacing:.04em;text-transform
     <div class="box">
       <h2>Precios de perfiles (por barra de 6 m)</h2>
       <div class="tbl"><table id="prices"></table></div>
+      <h2>Agregar un perfil propio</h2>
+      <div class="row">
+        <select id="npType"><option value="tubo">Tubo estructural</option><option value="planchuela">Planchuela</option><option value="cuadrado">Cuadrado macizo</option><option value="redondo">Redondo liso</option><option value="angulo">Ángulo</option><option value="cano">Caño redondo</option></select>
+        <input id="npA" type="number" placeholder="a mm" title="lado o diámetro, mm"><input id="npB" type="number" placeholder="b mm" title="segundo lado (tubo rectangular), mm"><input id="npE" type="number" placeholder="esp. mm" title="espesor, mm"><input id="npPrice" type="number" placeholder="$ / barra"><button id="btnNewProf">Agregar</button>
+      </div>
+      <div class="muted" id="npMsg">Medidas en mm. El peso por metro se calcula solo (acero 7,85 kg/dm³) y el perfil aparece en todas las listas.</div>
       <h2>Precios de chapa (por hoja de 1 x 2 m)</h2>
       <div class="tbl"><table id="sheetprices"></table></div>
       <h2>Precios de catálogo (por pieza)</h2>
@@ -238,7 +249,7 @@ th{font-family:var(--font-d);font-weight:600;letter-spacing:.04em;text-transform
 <script>
 // ===== calc-begin =====
 // kgm = kg por metro (acero 7.85 g/cm3). w = ancho visual en cm.
-const PROFILES=[
+let PROFILES=[
  {id:'pl12',name:'Planchuela 1/2" x 1/8"',w:1.27,kgm:0.316,price:6500},
  {id:'pl19',name:'Planchuela 3/4" x 3/16"',w:1.9,kgm:0.712,price:12000},
  {id:'pl25',name:'Planchuela 1" x 3/16"',w:2.54,kgm:0.949,price:15500},
@@ -275,7 +286,17 @@ const SHEETS=[
 const SHEET_M2=2, SHEET_WASTE=1.15; // hoja de 1x2 m; ponytail: sin nesting 2D, 15% de desperdicio fijo
 const BAR=600, KERF=0.3, PX=3; // PX = píxeles por cm en el plano
 const SH=Object.fromEntries(SHEETS.map(x=>[x.id,x]));
-const P=Object.fromEntries(PROFILES.map(p=>[p.id,p]));
+let P=Object.fromEntries(PROFILES.map(p=>[p.id,p]));
+const BUILTIN=PROFILES.slice();
+// Perfil propio a partir de medidas en mm. kg/m = área de acero × 7850 kg/m³.
+function mkProfile(t,a,b,e,price){let area,name,w;a=+a||0;b=+b||0;e=+e||0;
+ if(t==='tubo'){b=b||a;area=a*b-Math.max(0,a-2*e)*Math.max(0,b-2*e);name=`Tubo ${a}x${b}x${e}`;w=Math.max(a,b)/10}
+ else if(t==='planchuela'){area=a*e;name=`Planchuela ${a}x${e}`;w=a/10}
+ else if(t==='cuadrado'){area=a*a;name=`Cuadrado macizo ${a} mm`;w=a/10}
+ else if(t==='redondo'){area=Math.PI*a*a/4;name=`Redondo liso ${a} mm`;w=a/10}
+ else if(t==='angulo'){area=(2*a-e)*e;name=`Ángulo ${a}x${e}`;w=a/10}
+ else {area=Math.PI/4*(a*a-Math.max(0,a-2*e)**2);name=`Caño redondo ${a}x${e}`;w=a/10}
+ if(!(area>0))return null;return {id:'c_'+Date.now().toString(36),name,w:Math.max(w,.5),kgm:+(area/1e6*7850).toFixed(3),price:+price||0,custom:true}}
 const C=Object.fromEntries(CATALOG.map(c=>[c.id,c]));
 function polyLen(pts){let s=0;for(let i=1;i<pts.length;i++)s+=Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]);return s}
 // Espiral de Arquímedes en cm, de r1 (afuera) a r0 (adentro).
@@ -311,10 +332,12 @@ function calc(objs,S){
 // ===== calc-end =====
 
 const $=id=>document.getElementById(id);
+function profOpts(selId){return PROFILES.filter(p=>!p.hidden||p.id===selId).map(p=>`<option value="${p.id}"${p.id===selId?' selected':''}>${p.name}</option>`).join('')}
+function applyProfiles(){PROFILES=[...BUILTIN,...(S.profiles||[])];P=Object.fromEntries(PROFILES.map(p=>[p.id,p]));const cp=$('curProfile').value,mp=$('mP').value;$('curProfile').innerHTML=profOpts(cp||'cu12');$('mP').innerHTML=profOpts(mp||'an25');if(cp)$('curProfile').value=cp;if(mp)$('mP').value=mp}
 const fmt=n=>'$ '+Math.round(n).toLocaleString('es-AR');
 const num=(n,d=1)=>n.toLocaleString('es-AR',{maximumFractionDigits:d});
 const css=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
-let S={snap:5,labor:100,extras:15000,prices:{},catPrices:{},sheetPrices:{},mode:'2d'};
+let S={snap:5,labor:100,extras:15000,prices:{},catPrices:{},sheetPrices:{},mode:'2d',profiles:[],pieces:[]};
 try{Object.assign(S,JSON.parse(localStorage.getItem('herreria.cfg'))||{})}catch(e){}
 const PROPS=['kind','p','sp','dir','sweep','turns','r','r0','r1','bw','bh','catId','qty','ref','inset','depth','lockScalingX','lockScalingY','perPixelTargetFind'];
 
@@ -456,7 +479,7 @@ document.addEventListener('keydown',e=>{if(S.mode!=='2d'||/INPUT|SELECT|TEXTAREA
 document.querySelectorAll('[data-add]').forEach(b=>b.addEventListener('click',()=>add(b.dataset.add)));
 $('catButtons').innerHTML=CATALOG.filter(c=>!c.only3d).map(c=>`<button data-cat="${c.id}">${c.name}</button>`).join('')+'<span class="muted">El tacho de 200 L y la chimenea se agregan en el modo 3D como "Tambor / cilindro".</span>';
 document.querySelectorAll('[data-cat]').forEach(b=>b.addEventListener('click',()=>add('cat',{catId:b.dataset.cat})));
-$('curProfile').innerHTML=PROFILES.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');$('curProfile').value='cu12';
+$('curProfile').innerHTML=profOpts('cu12');
 $('snap').value=S.snap;$('snap').addEventListener('change',e=>{S.snap=+e.target.value;saveCfg();grid()});
 
 // vista: zoom con rueda, pan con alt o botón
@@ -478,7 +501,7 @@ $('btnFit').addEventListener('click',fitView);
 function fld(k,label,v,step=1){return `<label>${label}<input data-k="${k}" type="number" step="${step}" value="${+(+v).toFixed(2)}"></label>`}
 function renderProps(){const o=canvas.getActiveObject(),box=$('props');
  if(!o||o.type==='activeSelection'){box.innerHTML=`<h2>Parte</h2><div class="muted">${o?dims(o)+' seleccionadas. Arrastralas juntas o borralas.':'Tocá una parte del plano para editarla con números.'}</div>`;return}
- const ps=`<label>Perfil<select data-k="p">${PROFILES.map(p=>`<option value="${p.id}"${p.id===o.p?' selected':''}>${p.name}</option>`).join('')}</select></label>`;
+ const ps=`<label>Perfil<select data-k="p">${profOpts(o.p)}</select></label>`;
  let h='';
  if(o.kind==='seg')h=ps+fld('len','Largo cm',o.width*o.scaleX/PX)+fld('angle','Giro °',o.angle);
  if(o.kind==='frame'){const ins=2*(o.inset||0);h=ps+fld('w','Ancho exterior cm',o.width*o.scaleX/PX+ins)+fld('h','Alto exterior cm',o.height*o.scaleY/PX+ins)+fld('angle','Giro °',o.angle)}
@@ -521,7 +544,8 @@ function renderBom(){const r=calc(bomObjects(),S);
  $('origen').innerHTML=(src?`<div class="muted" style="margin-top:4px">De dónde sale: <br>${src}</div>`:'')+(bi.dups?`<div class="muted">${bi.dups} hierro${bi.dups>1?'s':''} superpuesto${bi.dups>1?'s':''} (arista de caja y borde dibujado en el mismo lugar) contado${bi.dups>1?'s':''} una sola vez.</div>`:'')+bi.warn.map(w=>`<div class="warn">${w}</div>`).join('');
  LAST={kg:r.kg,total:r.total};$('kg').textContent=num(r.kg)+' kg';$('mat').textContent=fmt(r.mat);$('total').textContent=fmt(r.total)}
 function renderPrices(){
- $('prices').innerHTML=`<tr><th>Perfil</th><th>kg/m</th><th>$ / barra</th></tr>`+PROFILES.map(p=>`<tr><td>${p.name}</td><td>${num(p.kgm,3)}</td><td><input data-price="${p.id}" type="number" step="100" value="${S.prices[p.id]??p.price}"></td></tr>`).join('');
+ $('prices').innerHTML=`<tr><th>Perfil</th><th>kg/m</th><th>$ / barra</th></tr>`+PROFILES.filter(p=>!p.hidden).map(p=>`<tr><td>${p.name}${p.custom?' <span class="muted">(propio)</span>':''}</td><td>${num(p.kgm,3)}</td><td><input data-price="${p.id}" type="number" step="100" value="${S.prices[p.id]??p.price}">${p.custom?` <button data-hideprof="${p.id}" title="Quitar de las listas">×</button>`:''}</td></tr>`).join('');
+ document.querySelectorAll('[data-hideprof]').forEach(b=>b.addEventListener('click',()=>{const p=(S.profiles||[]).find(x=>x.id===b.dataset.hideprof);if(p){p.hidden=true;saveCfg();applyProfiles();renderPrices()}}));
  $('sheetprices').innerHTML=`<tr><th>Chapa</th><th>kg/m²</th><th>$ / hoja</th></tr>`+SHEETS.map(x=>`<tr><td>${x.name}</td><td>${num(x.e*7.85,1)}</td><td><input data-sprice="${x.id}" type="number" step="500" value="${S.sheetPrices[x.id]??x.price}"></td></tr>`).join('');
  document.querySelectorAll('[data-sprice]').forEach(i=>i.addEventListener('input',()=>{S.sheetPrices[i.dataset.sprice]=+i.value;renderBom();saveCfg()}));
  $('catprices').innerHTML=`<tr><th>Pieza</th><th>$ / unidad</th></tr>`+CATALOG.map(c=>`<tr><td>${c.name}</td><td><input data-cprice="${c.id}" type="number" step="50" value="${S.catPrices[c.id]??c.price}"></td></tr>`).join('');
@@ -529,8 +553,27 @@ function renderPrices(){
  document.querySelectorAll('[data-cprice]').forEach(i=>i.addEventListener('input',()=>{S.catPrices[i.dataset.cprice]=+i.value;renderBom();saveCfg()}));
  $('labor').value=S.labor;$('extras').value=S.extras}
 function saveCfg(){try{localStorage.setItem('herreria.cfg',JSON.stringify(S))}catch(e){}}
+$('btnNewProf').addEventListener('click',()=>{const p=mkProfile($('npType').value,$('npA').value,$('npB').value,$('npE').value,$('npPrice').value);if(!p){$('npMsg').textContent='Faltan medidas: al menos el lado o diámetro, y el espesor cuando corresponde.';return}
+ S.profiles=S.profiles||[];S.profiles.push(p);saveCfg();applyProfiles();renderPrices();$('npMsg').textContent=`Agregado: ${p.name}, ${num(p.kgm,3)} kg/m. Ya está en las listas de perfil.`;$('npA').value=$('npB').value=$('npE').value=$('npPrice').value=''});
 $('labor').addEventListener('input',e=>{S.labor=+e.target.value;renderBom();saveCfg()});
 $('extras').addEventListener('input',e=>{S.extras=+e.target.value;renderBom();saveCfg()});
+// ---- piezas propias: una selección del plano guardada con nombre, para insertar en cualquier cara ----
+function pieceThumb(objs,cb){const sc=new fabric.StaticCanvas(null,{width:160,height:100,backgroundColor:css('--panel')});
+ fabric.util.enlivenObjects(objs,os=>{os.forEach(o=>{o.set('opacity',1);sc.add(o)});let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;os.forEach(o=>{const b=o.getBoundingRect(true,true);x0=Math.min(x0,b.left);y0=Math.min(y0,b.top);x1=Math.max(x1,b.left+b.width);y1=Math.max(y1,b.top+b.height)});
+  const z=Math.min(150/(x1-x0||1),90/(y1-y0||1));sc.setViewportTransform([z,0,0,z,(160-(x1-x0)*z)/2-x0*z,(100-(y1-y0)*z)/2-y0*z]);sc.renderAll();cb(sc.toDataURL({format:'jpeg',quality:.8}));sc.dispose()})}
+function savePiece(){const name=$('pieceName').value.trim()||('Pieza '+((S.pieces||[]).length+1));const os=canvas.getActiveObjects().filter(o=>o.kind!=='guide'&&o.kind!=='ghost'&&o.kind!=='gtext');
+ if(!os.length){$('pieceName').placeholder='Primero seleccioná partes del plano';return}
+ canvas.discardActiveObject();const objs=os.map(o=>o.toObject(PROPS));const x0=Math.min(...objs.map(o=>o.left)),y0=Math.min(...objs.map(o=>o.top));objs.forEach(o=>{o.left-=x0;o.top-=y0;o.ref=false});
+ const p={id:uid(),name,objs};S.pieces=S.pieces||[];S.pieces.unshift(p);saveCfg();renderPieces();$('pieceName').value='';
+ pieceThumb(objs,url=>{p.thumb=url;saveCfg();renderPieces()});
+ const as=new fabric.ActiveSelection(os,{canvas});canvas.setActiveObject(as);canvas.requestRenderAll()}
+function insertPiece(p){fabric.util.enlivenObjects(p.objs,objs=>{const c=canvas.getVpCenter(),g=snapPx();let w=0,h=0;objs.forEach(o=>{w=Math.max(w,o.left+o.width*(o.scaleX||1));h=Math.max(h,o.top+o.height*(o.scaleY||1))});
+ const dx=Math.round((c.x-w/2)/g)*g,dy=Math.round((c.y-h/2)/g)*g;quiet=true;objs.forEach(o=>{o.set({left:o.left+dx,top:o.top+dy});decorate(o);canvas.add(o)});quiet=false;
+ const as=new fabric.ActiveSelection(objs,{canvas});canvas.setActiveObject(as);canvas.requestRenderAll();after()})}
+function renderPieces(){const L=$('pieces'),ps=S.pieces||[];L.innerHTML=ps.length?ps.map(p=>`<div class="row" style="gap:4px;flex-wrap:nowrap"><button data-piece="${p.id}" style="flex:1;display:flex;align-items:center;gap:6px;padding:3px 6px"><img src="${p.thumb||''}" alt="" style="width:48px;height:30px;object-fit:cover;background:var(--bg);border-radius:3px"><span style="text-align:left">${p.name}</span></button><button data-piecedel="${p.id}" title="Quitar">×</button></div>`).join(''):'<span class="muted">Todavía no guardaste piezas.</span>';
+ L.querySelectorAll('[data-piece]').forEach(b=>b.addEventListener('click',()=>insertPiece(ps.find(x=>x.id===b.dataset.piece))));
+ L.querySelectorAll('[data-piecedel]').forEach(b=>b.addEventListener('click',()=>{if(b.dataset.armed){S.pieces=ps.filter(x=>x.id!==b.dataset.piecedel);saveCfg();renderPieces()}else{b.dataset.armed='1';b.textContent='¿Quitar?';setTimeout(()=>{b.dataset.armed='';b.textContent='×'},3000)}}))}
+$('btnPieceSave').addEventListener('click',savePiece);
 function summary(){const r=calc(bomObjects(),S);return ['PRESUPUESTO HERRERÍA','',...r.rows.map(x=>`• ${x.name}: ${x.bars} barra(s) de 6 m (${num(x.m,1)} m útiles, ${num(x.kg)} kg) ${fmt(x.cost)}`),...r.sheetRows.map(x=>`• ${x.name}: ${x.hojas} hoja(s) de 1x2 m (${num(x.m2,2)} m², ${num(x.kg)} kg) ${fmt(x.cost)}`),...r.catRows.map(x=>`• ${x.name} x${x.n}: ${fmt(x.cost)}`),'',`Peso total: ${num(r.kg)} kg`,`Material: ${fmt(r.mat)}`,`Mano de obra: ${S.labor}%`,`Pintura y consumibles: ${fmt(S.extras)}`,`TOTAL: ${fmt(r.total)}`].join('\n')}
 // Machete de taller: qué cortar, cuántos y cómo repartir cada barra. Agrupado por perfil.
 function cutList(){const objs=objects3d(),r=calc(objs,S),p=curPr(),L=[`LISTA DE CORTES · ${p?p.name:''}`,`Caja ${M.W} × ${M.H} × ${M.D} cm exteriores · largos exteriores, corte a inglete o lado seguro`,''];
@@ -736,7 +779,7 @@ c3.addEventListener('dblclick',e=>{const h=pick(e);if(h&&h.object.userData.i<=-2
 c3.addEventListener('wheel',e=>{e.preventDefault();orbit.r=Math.min(3000,Math.max(40,orbit.r*Math.pow(1.001,e.deltaY)))},{passive:false});
 
 // formulario
-$('mP').innerHTML=PROFILES.map(p=>`<option value="${p.id}">${p.name}</option>`).join('');
+$('mP').innerHTML=profOpts('an25');
 function renderForm(){$('mW').value=M.W;$('mH').value=M.H;$('mD').value=M.D;$('mP').value=M.p;$('eTop').checked=M.edges.top;$('eBot').checked=M.edges.bot;$('eVert').checked=M.edges.vert}
 function readForm(){M.W=Math.max(5,+$('mW').value||M.W);M.H=Math.max(5,+$('mH').value||M.H);M.D=Math.max(5,+$('mD').value||M.D);M.p=$('mP').value;M.edges={top:$('eTop').checked,bot:$('eBot').checked,vert:$('eVert').checked};
  M.parts.forEach(q=>{const mx=M[AXS[PLANES[q.plane].n]];q.at=Math.min(mx,Math.max(0,q.at))});frameCam();update3()}
@@ -745,7 +788,7 @@ function update3(){buildScene();renderPlist();renderBom();saveM();pushHist();if(
 const TYPES={bars:'Grilla / barrotes',bar:'Travesaño',frame:'Marco / estante',sheet:'Chapa',cyl:'Tambor / cilindro'};
 function renderPlist(){const L=$('plist');
  L.innerHTML=M.parts.length?M.parts.map((q,i)=>{const pl=PLANES[q.plane]||PLANES.xz,U=AXS[pl.u],V=AXS[pl.v];
-  const prof=q.type==='sheet'?`<select data-k="sheet">${SHEETS.map(x=>`<option value="${x.id}"${x.id===q.sheet?' selected':''}>${x.name}</option>`).join('')}</select>`:`<select data-k="p">${PROFILES.map(p=>`<option value="${p.id}"${p.id===q.p?' selected':''}>${p.name}</option>`).join('')}</select>`;
+  const prof=q.type==='sheet'?`<select data-k="sheet">${SHEETS.map(x=>`<option value="${x.id}"${x.id===q.sheet?' selected':''}>${x.name}</option>`).join('')}</select>`:`<select data-k="p">${profOpts(q.p)}</select>`;
   const dir=(q.type==='bars')?`<select data-k="dir"><option value="u"${q.dir==='u'?' selected':''}>a lo ${U==='W'?'ancho':U==='H'?'alto':'profundo'}</option><option value="v"${q.dir==='v'?' selected':''}>a lo ${V==='W'?'ancho':V==='H'?'alto':'profundo'}</option></select>`:'';
   const extra=q.type==='bars'?`<input data-k="sp" type="number" value="${q.sp}" title="paso cm"><span class="muted">cm de paso</span>`:'';
   if(q.type==='cyl'){const AXN={x:'a lo ancho',y:'a lo alto',z:'a lo profundo'},PN={x:'centro desde la izq.',y:'centro desde el piso',z:'centro desde el fondo'},items=[...CATALOG.filter(c=>['tacho200','chimenea'].includes(c.id)).map(c=>[c.id,c.name+' (catálogo)']),...SHEETS.map(x=>[x.id,x.name+' (chapa)'])];
@@ -863,10 +906,14 @@ async function exportPr(p){const {thumb,thumbAt,...clean}=p;const txt=JSON.strin
  p.exportedAt=Date.now();savePr();backupCheck();
  if(INART){$('prIOmsg').textContent='Copiá este texto y pegalo en "Importar" en el otro aparato.';try{const dl=await claude.use('downloads');if(dl){await dl.save({filename:fname,data:txt});$('prIOmsg').textContent='Archivo guardado. También podés copiar el texto.'}}catch(e){}}
  else{$('prIOmsg').textContent='Se descargó el archivo. También podés copiar el texto.';const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([txt],{type:'application/json'}));a.download=fname;document.body.appendChild(a);a.click();a.remove()}}
-function importText(txt){let j;try{j=JSON.parse(txt)}catch(e){$('prIOmsg').textContent='Eso no es un proyecto válido.';return}const list=j&&(j.projects||(j.project?[j.project]:null));
+function importText(txt){let j;try{j=JSON.parse(txt)}catch(e){$('prIOmsg').textContent='Eso no es un proyecto válido.';return}
+ if(j&&Array.isArray(j.profiles)){S.profiles=S.profiles||[];j.profiles.forEach(p=>{if(!S.profiles.find(x=>x.id===p.id))S.profiles.push(p)})}
+ if(j&&Array.isArray(j.pieces)){S.pieces=S.pieces||[];j.pieces.forEach(p=>{if(!S.pieces.find(x=>x.id===p.id))S.pieces.push(p)})}
+ if(j&&(j.profiles||j.pieces)){saveCfg();applyProfiles();renderPrices();renderPieces()}
+ const list=j&&(j.projects||(j.project?[j.project]:null));
  if(!list||!list.length||list.some(p=>!p||!p.M||!p.M.parts)){$('prIOmsg').textContent='Eso no es un proyecto válido.';return}
  list.forEach(p=>{p.id=uid();p.updated=Date.now();p.exportedAt=p.updated;p.faces=p.faces||{};delete p.thumb;PR.list.unshift(p)});$('prIOmsg').textContent='Importado: '+list.map(p=>p.name).join(', ');$('prText').value='';renderPrj()}
-async function exportAll(){savePr();const now=Date.now(),clean=PR.list.map(({thumb,thumbAt,...p})=>p),txt=JSON.stringify({app:'cotizador-herreria',v:1,projects:clean}),fname='proyectos-herreria-'+new Date().toISOString().slice(0,10)+'.json';
+async function exportAll(){savePr();const now=Date.now(),clean=PR.list.map(({thumb,thumbAt,...p})=>p),txt=JSON.stringify({app:'cotizador-herreria',v:1,projects:clean,profiles:S.profiles||[],pieces:S.pieces||[],prices:S.prices,catPrices:S.catPrices,sheetPrices:S.sheetPrices}),fname='proyectos-herreria-'+new Date().toISOString().slice(0,10)+'.json';
  $('prj').hidden=false;$('prIO').hidden=false;$('prText').value=txt;
  if(INART){$('prIOmsg').textContent='Copiá este texto y guardalo (o pegalo en "Importar" en otro aparato).';try{const dl=await claude.use('downloads');if(dl){await dl.save({filename:fname,data:txt});$('prIOmsg').textContent='Archivo guardado con todos los proyectos.'}}catch(e){}}
  else{$('prIOmsg').textContent='Se descargó un archivo con todos los proyectos. Guardalo en Drive, WhatsApp o donde quieras.';const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([txt],{type:'application/json'}));a.download=fname;document.body.appendChild(a);a.click();a.remove()}
@@ -888,7 +935,7 @@ $('prFile').addEventListener('change',e=>{const f=e.target.files[0];if(!f)return
 if(INART)$('prFile').hidden=true;
 
 // ---- arranque ----
-theme();fit();renderPrices();
+theme();fit();applyProfiles();renderPrices();renderPieces();
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change',theme);
 loadPR();
 if(PR.cur&&curPr()){openPr(PR.cur)}else{newPr('Proyecto 1');applyTpl(TPL[1]).then(()=>setTimeout(openGal,400))}
