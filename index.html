@@ -406,6 +406,7 @@ canvas.on('object:modified',e=>{const o=e.target;
  if(o.kind==='bars'&&(o.scaleX!==1||o.scaleY!==1)){const a={p:o.p,bw:o.bw*o.scaleX,bh:o.bh*o.scaleY,sp:o.sp,dir:o.dir};rebuild(o,()=>mkBars(a))}
  after()});
 canvas.on('object:added',after);canvas.on('object:removed',after);
+canvas.on('mouse:down',o=>{if(o.target&&o.target.kind==='ghost'){$('props').innerHTML='<h2>Parte</h2><div>Esto es una pieza de la caja, de las partes interiores o de otra cara: acá se ve como guía y no se edita.</div><div class="row"><button id="goto3d" class="primary">Ir al 3D para editarla</button></div><div class="muted">En el 3D tocás la pieza y la movés, la quitás o le cambiás el perfil.</div>';$('goto3d').addEventListener('click',()=>setMode('3d'))}});
 canvas.on('selection:created',onSel);canvas.on('selection:updated',onSel);canvas.on('selection:cleared',()=>{$('dim').style.display='none';renderProps()});
 function onSel(){const o=canvas.getActiveObject();showDim(o);renderProps()}
 function dims(o){const q=pieces(o),pre=o.ref?'(ya contado) ':'',suf=((o.qty||1)>1?` ×${o.qty}`:'')+(o.depth?` · ${num(o.depth)} cm adentro`:'');return pre+dims0(o,q)+suf}
@@ -450,7 +451,7 @@ function ghosts(){const f=FACES[cur],pl=PLANES[f.pl],I={x:0,y:1,z:2},mine=-2-cur
  sh.forEach(x=>{if(x.i===mine)return;const c=(a,b)=>p3(x.pl,a,b,x.at);poly([c(0,0),c(x.w,0),c(x.w,x.h),c(0,x.h)].map(px))});
  cy.forEach(c=>{const r=c.d/2,e={x:r,y:r,z:r};e[c.axis]=c.len/2;const lo={x:c.pos.x-e.x,y:c.pos.y-e.y,z:c.pos.z-e.z},hi={x:c.pos.x+e.x,y:c.pos.y+e.y,z:c.pos.z+e.z};if(c.half&&c.axis!=='y')hi.y=c.pos.y;
   const cs=[[lo.x,lo.y,lo.z],[hi.x,lo.y,lo.z],[hi.x,hi.y,lo.z],[lo.x,hi.y,lo.z],[lo.x,lo.y,hi.z],[hi.x,lo.y,hi.z],[hi.x,hi.y,hi.z],[lo.x,hi.y,hi.z]].map(px);const xs=cs.map(p=>p[0]),ys=cs.map(p=>p[1]);poly([[Math.min(...xs),Math.min(...ys)],[Math.max(...xs),Math.min(...ys)],[Math.max(...xs),Math.max(...ys)],[Math.min(...xs),Math.max(...ys)]])});
- quiet=true;items.forEach(o=>{o.set({kind:'ghost',opacity:(o.opacity||1)*.3,selectable:false,evented:false,excludeFromExport:true,objectCaching:false});canvas.add(o);canvas.sendToBack(o)});
+ quiet=true;items.forEach(o=>{o.set({kind:'ghost',opacity:(o.opacity||1)*.3,selectable:false,evented:true,hoverCursor:'help',excludeFromExport:true,objectCaching:false});canvas.add(o);canvas.sendToBack(o)});
  const g=canvas.getObjects().find(o=>o.kind==='guide');if(g)canvas.sendToBack(g);quiet=false;canvas.requestRenderAll()}
 // Rectángulo punteado con el tamaño de la cara. No se exporta ni se cuenta.
 function guide(){const old=canvas.getObjects().find(o=>o.kind==='guide');if(old)canvas.remove(old);const [w,h]=FACES[cur].dims();
@@ -729,7 +730,7 @@ function draw3(){if(!renderer)return;size3();const w=c3.width,h=c3.height;if(!w|
 // órbita mínima. ponytail: sin OrbitControls; si hace falta pan o inercia, cargar examples/js/controls/OrbitControls.js
 let d3=null;
 function pick(e){const r=c3.getBoundingClientRect(),mw=mainW(),px=e.clientX-r.left,py=e.clientY-r.top;if(px>mw)return null;
- mouse.set((px/mw)*2-1,-(py/c3.height)*2+1);ray.setFromCamera(mouse,cam);return ray.intersectObjects(group.children).find(h=>h.object.userData.i!==null)||null}
+ mouse.set((px/mw)*2-1,-(py/c3.height)*2+1);ray.setFromCamera(mouse,cam);group.updateMatrixWorld(true);return ray.intersectObjects(group.children).find(h=>h.object.userData.i!==null)||null}
 // Qué se puede mover y por dónde. Cada candidato: vector de avance, valor actual, setter y tope.
 function unit(ax){const v=new THREE.Vector3();v[ax]=1;return v}
 function cands(hit){const i=hit.object.userData.i;
@@ -746,7 +747,7 @@ function setFaceDepth(k,oi,v){v=Math.max(0,v);if(k===cur){const o=real()[oi];if(
  try{const j=JSON.parse(views[k].json);if(j.objects[oi]){j.objects[oi].depth=v;views[k].json=JSON.stringify(j)}}catch(e){}}
 function mainW(){return c3.parentElement===$('mini3')?c3.width:Math.floor(c3.width*.68)}
 function toPx(p){const n=p.clone().project(cam),mw=mainW();return [(n.x+1)/2*mw,(1-n.y)/2*c3.height]}
-c3.addEventListener('pointerdown',e=>{c3.setPointerCapture(e.pointerId);d3={x:e.clientX,y:e.clientY,moved:0,part:null};const hit=pick(e);if(!hit)return;
+c3.addEventListener('pointerdown',e=>{c3.setPointerCapture(e.pointerId);d3={x:e.clientX,y:e.clientY,moved:0,part:null,hadHit:false};const hit=pick(e);if(!hit)return;d3.hadHit=true;
  const i=hit.object.userData.i,oi=hit.object.userData.oi;
  if(i<=-2){const ns={oi,k:-2-i};selEdge=null;if(sel3!==i||!selObj||selObj.oi!==oi){sel3=i;selObj=ns;buildScene();renderPlist()}}
  else if(i>=0){selObj=null;selEdge=null;if(sel3!==i){sel3=i;buildScene();renderPlist()}}
@@ -762,9 +763,9 @@ c3.addEventListener('pointermove',e=>{if(!d3){const h=pick(e);c3.style.cursor=h&
   const c=p.pick;if(c.n2<1e-6)return;const d=(mx*c.sx+my*c.sy)/c.n2,st=S.snap3||1,v=Math.min(c.max,Math.max(0,Math.round((c.start+d)/st)*st));
   if(v!==c.get()){c.set(v);buildScene();c3.style.cursor='grabbing'}return}
  orbit.th-=dx*.01;orbit.ph=Math.min(Math.PI-.15,Math.max(.15,orbit.ph-dy*.01));d3.x=e.clientX;d3.y=e.clientY});
-c3.addEventListener('pointerup',e=>{if(!d3)return;const {moved,part}=d3;d3=null;c3.style.cursor='default';
+c3.addEventListener('pointerup',e=>{if(!d3)return;const {moved,part,hadHit:d3hit}=d3;d3=null;c3.style.cursor='default';
  if(part){if(moved){if(part.pick&&part.pick.face){if(selObj&&selObj.k===cur)after();else persist()}update3()}return}
- if(moved)return;const hit=pick(e);if(!hit){sel3=null;selObj=null;selEdge=null;buildScene();renderPlist()}});
+ if(moved||d3hit)return;sel3=null;selObj=null;selEdge=null;buildScene();renderPlist()});
 let hist3=[];
 function pushHist(){const j=JSON.stringify(M);if(hist3[hist3.length-1]!==j){hist3.push(j);if(hist3.length>60)hist3.shift()}}
 function undo3(){if(hist3.length<2)return;hist3.pop();M=JSON.parse(hist3[hist3.length-1]);sel3=null;renderForm();buildScene();renderPlist();renderBom();saveM()}
