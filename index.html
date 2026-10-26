@@ -112,6 +112,7 @@ th{font-family:var(--font-d);font-weight:600;letter-spacing:.04em;text-transform
   <span class="sp"></span>
   <input id="prName" title="Nombre del proyecto" style="font-family:var(--font-d);font-weight:600;font-size:16px;width:220px" placeholder="Nombre del proyecto">
   <button id="btnPrj">Proyectos</button>
+  <button id="btnShare" title="Link del proyecto abierto para mandar por WhatsApp">Compartir</button>
   <button id="btnGal" class="primary">Modelos base</button>
   <button id="btnShot">Imagen para el cliente</button>
 </header>
@@ -184,6 +185,7 @@ th{font-family:var(--font-d);font-weight:600;letter-spacing:.04em;text-transform
     <label class="chk"><input type="checkbox" id="eTop"> aristas de arriba</label>
     <label class="chk"><input type="checkbox" id="eBot"> aristas de abajo</label>
     <label class="chk"><input type="checkbox" id="eVert"> patas / verticales</label>
+    <span class="muted">Para sacar una sola pata o arista: tocala en el 3D y "Quitar".</span>
     <h2>Partes interiores</h2>
     <button data-padd="bars">Grilla / barrotes</button>
     <button data-padd="bar">Travesaño</button>
@@ -600,7 +602,7 @@ $('btnClear').addEventListener('click',()=>{real().forEach(o=>canvas.remove(o));
 // Planos: u y v son los ejes de la cara, n el eje normal. 'at' es la posición sobre n en cm.
 const PLANES={xz:{name:'Horizontal (estante, tapa, piso)',u:'x',v:'z',n:'y'},xy:{name:'Frente / fondo',u:'x',v:'y',n:'z'},yz:{name:'Lateral izq. / der.',u:'z',v:'y',n:'x'}};
 const AXS={x:'W',y:'H',z:'D'};
-let M={W:80,H:90,D:50,p:'an25',edges:{top:true,bot:false,vert:true},parts:[]},sel3=null,selObj=null;
+let M={W:80,H:90,D:50,p:'an25',edges:{top:true,bot:false,vert:true},parts:[]},sel3=null,selObj=null,selEdge=null;
 function saveM(){savePr()}
 function p3(pl,u,v,at){const o={};o[pl.u]=u;o[pl.v]=v;o[pl.n]=at;return [o.x,o.y,o.z]}
 // Devuelve hierros {p,a,b,len,i} y chapas {p,w,h,pl,at,i}; i = índice de parte, -1 = caja.
@@ -608,9 +610,11 @@ function p3(pl,u,v,at){const o={};o[pl.u]=u;o[pl.v]=v;o[pl.n]=at;return [o.x,o.y
 // y se cuentan por la medida exterior (L), que es la longitud de corte a inglete y el lado seguro para corte a tope.
 function members(){const ms=[],sh=[],ex=[],cy=[],{W,H,D,p,edges:E}=M,i0=Math.max(P[p].w,.8)/2,a=i0,x1=W-i0,y1=H-i0,z1=D-i0;
  const seg=(a,b,p,i,L,what)=>ms.push({p,a,b,i,L,what,len:L||Math.hypot(b[0]-a[0],b[1]-a[1],b[2]-a[2])});
- if(E.top){seg([a,y1,a],[x1,y1,a],p,-1,W,'arista arriba');seg([a,y1,z1],[x1,y1,z1],p,-1,W,'arista arriba');seg([a,y1,a],[a,y1,z1],p,-1,D,'arista arriba');seg([x1,y1,a],[x1,y1,z1],p,-1,D,'arista arriba')}
- if(E.bot){seg([a,a,a],[x1,a,a],p,-1,W,'arista abajo');seg([a,a,z1],[x1,a,z1],p,-1,W,'arista abajo');seg([a,a,a],[a,a,z1],p,-1,D,'arista abajo');seg([x1,a,a],[x1,a,z1],p,-1,D,'arista abajo')}
- if(E.vert){seg([a,a,a],[a,y1,a],p,-1,H,'pata');seg([x1,a,a],[x1,y1,a],p,-1,H,'pata');seg([a,a,z1],[a,y1,z1],p,-1,H,'pata');seg([x1,a,z1],[x1,y1,z1],p,-1,H,'pata')}
+ // Cada arista tiene id (t0-3 arriba, b0-3 abajo, v0-3 patas) y se puede quitar sola desde el 3D (M.off).
+ const off=M.off||[],E2=(id,a2,b2,L,what)=>{if(!off.includes(id)){seg(a2,b2,p,-1,L,what);ms[ms.length-1].edge=id}};
+ if(E.top){E2('t0',[a,y1,a],[x1,y1,a],W,'arista arriba');E2('t1',[a,y1,z1],[x1,y1,z1],W,'arista arriba');E2('t2',[a,y1,a],[a,y1,z1],D,'arista arriba');E2('t3',[x1,y1,a],[x1,y1,z1],D,'arista arriba')}
+ if(E.bot){E2('b0',[a,a,a],[x1,a,a],W,'arista abajo');E2('b1',[a,a,z1],[x1,a,z1],W,'arista abajo');E2('b2',[a,a,a],[a,a,z1],D,'arista abajo');E2('b3',[x1,a,a],[x1,a,z1],D,'arista abajo')}
+ if(E.vert){E2('v0',[a,a,a],[a,y1,a],H,'pata');E2('v1',[x1,a,a],[x1,y1,a],H,'pata');E2('v2',[a,a,z1],[a,y1,z1],H,'pata');E2('v3',[x1,a,z1],[x1,y1,z1],H,'pata')}
  M.parts.forEach((q,i)=>{const pl=PLANES[q.plane]||PLANES.xz,U=M[AXS[pl.u]],V=M[AXS[pl.v]],N=M[AXS[pl.n]];
   const wq=q.type==='sheet'?Math.max(SH[q.sheet]?SH[q.sheet].e/10:.2,.6):q.type==='cyl'?.6:Math.max((P[q.p]||P.cu12).w,.8),iq=wq/2,at=Math.min(N-iq,Math.max(iq,q.at)),P_=(u,v)=>p3(pl,u,v,at);
   if(q.type==='frame'){const wh=`marco/estante a ${Math.round(at)} cm`;seg(P_(iq,iq),P_(U-iq,iq),q.p,i,U,wh);seg(P_(iq,V-iq),P_(U-iq,V-iq),q.p,i,U,wh);seg(P_(iq,iq),P_(iq,V-iq),q.p,i,V,wh);seg(P_(U-iq,iq),P_(U-iq,V-iq),q.p,i,V,wh)}
@@ -679,7 +683,7 @@ function hex(v){return new THREE.Color(css(v))}
 function center(){return new THREE.Vector3(M.W/2,M.H/2,M.D/2)}
 let EMPTY=false;
 function buildScene(){scene.remove(group);group=new THREE.Group();const st=hex('--steel'),acc=hex('--accent'),{ms,sh,ex,cy}=members();EMPTY=!ms.length&&!sh.length&&!ex.length&&!cy.length;
- const X=new THREE.Vector3(1,0,0),Z=new THREE.Vector3(0,0,1),hot=(i,oi)=>i===sel3&&(selObj?selObj.oi===oi:true),mat=(i,ghost,oi)=>new THREE.MeshLambertMaterial({color:hot(i,oi)?acc:st,transparent:!!ghost,opacity:ghost?.75:1});
+ const X=new THREE.Vector3(1,0,0),Z=new THREE.Vector3(0,0,1),hot=(i,oi)=>i===-1?(selEdge!=null&&oi===selEdge):(i===sel3&&(selObj?selObj.oi===oi:true)),mat=(i,ghost,oi)=>new THREE.MeshLambertMaterial({color:hot(i,oi)?acc:st,transparent:!!ghost,opacity:ghost?.75:1});
  const bar=(a,b,w,i,oi)=>{const A=new THREE.Vector3(...a),B=new THREE.Vector3(...b),len=A.distanceTo(B);if(len<.05)return;const mesh=new THREE.Mesh(new THREE.BoxGeometry(len,w,w),mat(i,false,oi));mesh.position.copy(A.clone().add(B).multiplyScalar(.5));mesh.quaternion.setFromUnitVectors(X,B.clone().sub(A).normalize());mesh.userData.i=i;mesh.userData.oi=oi;group.add(mesh)};
  for(const e of ex){if(e.t==='bar')bar(e.a,e.b,e.w,e.i,e.oi);
   else if(e.t==='ball'){const m=new THREE.Mesh(new THREE.SphereGeometry(e.r,16,12),mat(e.i,false,e.oi));m.position.set(...e.c);m.userData.i=e.i;m.userData.oi=e.oi;group.add(m)}
@@ -687,7 +691,7 @@ function buildScene(){scene.remove(group);group=new THREE.Group();const st=hex('
    const m=e.t==='ring'?new THREE.Mesh(new THREE.TorusGeometry(e.r,Math.max(.4,e.r/5),8,24),mat(e.i,false,e.oi)):new THREE.Mesh(new THREE.BoxGeometry(e.w,e.h,e.e),mat(e.i,e.ghost,e.oi));
    if(e.t==='ring')m.quaternion.setFromUnitVectors(Z,N);else m.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(U,Vv,N));
    m.position.set(...e.c);m.userData.i=e.i;m.userData.oi=e.oi;group.add(m)}}
- for(const m of ms){const w=Math.max(P[m.p].w,.8),g=new THREE.BoxGeometry(m.len,w,w),mesh=new THREE.Mesh(g,new THREE.MeshLambertMaterial({color:m.i===sel3?acc:st}));
+ for(const m of ms){const w=Math.max((P[m.p]||P.cu12).w,.8),g=new THREE.BoxGeometry(m.len,w,w),mesh=new THREE.Mesh(g,new THREE.MeshLambertMaterial({color:(m.i===-1?selEdge!=null&&m.edge===selEdge:m.i===sel3&&!selObj)?acc:st}));mesh.userData.edge=m.edge;
   const a=new THREE.Vector3(...m.a),b=new THREE.Vector3(...m.b),d=b.clone().sub(a).normalize();mesh.position.copy(a.clone().add(b).multiplyScalar(.5));mesh.quaternion.setFromUnitVectors(X,d);mesh.userData.i=m.i;group.add(mesh)}
  for(const x of sh){const e=SH[x.p].e/10,dims={x:0,y:0,z:0};dims[x.pl.u]=x.w;dims[x.pl.v]=x.h;dims[x.pl.n]=Math.max(e,.6);
   const mesh=new THREE.Mesh(new THREE.BoxGeometry(dims.x,dims.y,dims.z),new THREE.MeshLambertMaterial({color:x.i===sel3?acc:st,transparent:true,opacity:.75}));
@@ -744,12 +748,13 @@ function mainW(){return c3.parentElement===$('mini3')?c3.width:Math.floor(c3.wid
 function toPx(p){const n=p.clone().project(cam),mw=mainW();return [(n.x+1)/2*mw,(1-n.y)/2*c3.height]}
 c3.addEventListener('pointerdown',e=>{c3.setPointerCapture(e.pointerId);d3={x:e.clientX,y:e.clientY,moved:0,part:null};const hit=pick(e);if(!hit)return;
  const i=hit.object.userData.i,oi=hit.object.userData.oi;
- if(i<=-2){const ns={oi,k:-2-i};if(sel3!==i||!selObj||selObj.oi!==oi){sel3=i;selObj=ns;buildScene();renderPlist()}}
- else if(i>=0){selObj=null;if(sel3!==i){sel3=i;buildScene();renderPlist()}}
+ if(i<=-2){const ns={oi,k:-2-i};selEdge=null;if(sel3!==i||!selObj||selObj.oi!==oi){sel3=i;selObj=ns;buildScene();renderPlist()}}
+ else if(i>=0){selObj=null;selEdge=null;if(sel3!==i){sel3=i;buildScene();renderPlist()}}
+ else if(i===-1&&hit.object.userData.edge){selObj=null;sel3=null;selEdge=hit.object.userData.edge;buildScene();renderPlist()}
  const cs=cands(hit);if(!cs.length)return;const p0=hit.point.clone(),a=toPx(p0);
  cs.forEach(c=>{const b=toPx(p0.clone().add(c.v.clone().multiplyScalar(10)));c.sx=(b[0]-a[0])/10;c.sy=(b[1]-a[1])/10;c.n2=c.sx*c.sx+c.sy*c.sy;c.start=c.get()});
  d3.part={cs,pick:null,x0:e.clientX,y0:e.clientY}});
-c3.addEventListener('pointermove',e=>{if(!d3){const h=pick(e);c3.style.cursor=h&&(h.object.userData.i>=0||h.object.userData.oi!=null)?'grab':'default';return}
+c3.addEventListener('pointermove',e=>{if(!d3){const h=pick(e);c3.style.cursor=h&&(h.object.userData.i>=0||h.object.userData.oi!=null)?'grab':(h&&h.object.userData.edge?'pointer':'default');return}
  const dx=e.clientX-d3.x,dy=e.clientY-d3.y;if(Math.abs(dx)+Math.abs(dy)>3)d3.moved=1;
  if(d3.part){const p=d3.part,mx=e.clientX-p.x0,my=e.clientY-p.y0;if(!p.pick){if(Math.abs(mx)+Math.abs(my)<4)return;
    // elige el eje cuya dirección en pantalla se parece más al gesto
@@ -759,19 +764,19 @@ c3.addEventListener('pointermove',e=>{if(!d3){const h=pick(e);c3.style.cursor=h&
  orbit.th-=dx*.01;orbit.ph=Math.min(Math.PI-.15,Math.max(.15,orbit.ph-dy*.01));d3.x=e.clientX;d3.y=e.clientY});
 c3.addEventListener('pointerup',e=>{if(!d3)return;const {moved,part}=d3;d3=null;c3.style.cursor='default';
  if(part){if(moved){if(part.pick&&part.pick.face){if(selObj&&selObj.k===cur)after();else persist()}update3()}return}
- if(moved)return;const hit=pick(e);if(!hit){sel3=null;selObj=null;buildScene();renderPlist()}});
+ if(moved)return;const hit=pick(e);if(!hit){sel3=null;selObj=null;selEdge=null;buildScene();renderPlist()}});
 let hist3=[];
 function pushHist(){const j=JSON.stringify(M);if(hist3[hist3.length-1]!==j){hist3.push(j);if(hist3.length>60)hist3.shift()}}
 function undo3(){if(hist3.length<2)return;hist3.pop();M=JSON.parse(hist3[hist3.length-1]);sel3=null;renderForm();buildScene();renderPlist();renderBom();saveM()}
 $('undo3').addEventListener('click',undo3);
 $('btnDims').addEventListener('click',()=>{S.dims=S.dims===false?true:false;$('btnDims').classList.toggle('on',S.dims!==false);saveCfg()});
 $('btnDims').classList.toggle('on',S.dims!==false);
-function del3(){if(sel3===null||sel3<0)return;M.parts.splice(sel3,1);sel3=null;selObj=null;update3()}
+function del3(){if(selEdge){M.off=M.off||[];if(!M.off.includes(selEdge))M.off.push(selEdge);selEdge=null;update3();return}if(sel3===null||sel3<0)return;M.parts.splice(sel3,1);sel3=null;selObj=null;update3()}
 $('del3').addEventListener('click',del3);
 document.addEventListener('keydown',e=>{if(S.mode!=='3d'||/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName))return;
  if((e.ctrlKey||e.metaKey)&&e.key==='z'){e.preventDefault();undo3();return}
  if(e.key==='Delete'||e.key==='Backspace'){e.preventDefault();del3();return}
- if(!/^Arrow/.test(e.key))return;const st=(S.snap3||1)*(e.shiftKey?10:1),dir=(e.key==='ArrowUp'||e.key==='ArrowRight')?1:-1,vert=e.key==='ArrowUp'||e.key==='ArrowDown';
+ if(!/^Arrow/.test(e.key))return;if(selEdge)return;const st=(S.snap3||1)*(e.shiftKey?10:1),dir=(e.key==='ArrowUp'||e.key==='ArrowRight')?1:-1,vert=e.key==='ArrowUp'||e.key==='ArrowDown';
  if(selObj){e.preventDefault();const f=FACES[selObj.k],v=faceDepth(selObj.k,selObj.oi);setFaceDepth(selObj.k,selObj.oi,Math.min(M[AXS[PLANES[f.pl].n]],Math.max(0,v+(vert?dir:-dir)*st)));if(selObj.k===cur)after();else persist();update3();return}
  if(sel3===null||sel3<0)return;e.preventDefault();let cs=cands({object:{userData:{i:sel3}}});if(!cs.length)return;
  let c=cs.length===1?cs[0]:(vert?(cs.find(x=>x.ax==='y')||cs[1]):(cs.find(x=>x.ax!=='y')||cs[0]));c.set(Math.min(c.max,Math.max(0,c.get()+dir*st)));update3()});
@@ -808,7 +813,10 @@ function renderPlist(){const L=$('plist');
    if(k==='axis'){if(q.type==='bar')normBar(q);q.axis=v}else if(k.startsWith('pos.')){if(q.type==='bar')normBar(q);q.pos[k.slice(4)]=Math.max(0,v)}else if(k==='d'){q.d=Math.max(2,v)}else if(k==='len'){q.len=Math.max(2,v)}else if(k==='half'){q.half=v==='1'}else if(k==='item'){q.item=v}else if(k==='plane'){q.plane=v;q.at=M[AXS[PLANES[v].n]];if(v==='xz')q.at=M.H}else if(k==='at'){q.at=Math.min(M[AXS[PLANES[q.plane].n]],Math.max(0,v))}else if(k==='sp'){q.sp=Math.max(.5,v)}else if(k==='off'){q.off=Math.max(0,v)}else q[k]=v;update3()}))});
  L.querySelectorAll('[data-del]').forEach(b=>b.addEventListener('click',()=>{M.parts.splice(+b.dataset.del,1);sel3=null;update3()}));
  $('facelist').innerHTML='<span class="lab muted">Caras dibujadas en 2D</span>'+FACES.map((f,k)=>{const n=viewObjs(f.id).filter(o=>!o.ref).length;return `<button data-face="${k}" class="${sel3===-2-k?'on':''}" style="font-size:12px;padding:4px 8px">${f.name}: ${n?n+' partes':'vacía'} · editar</button>`}).join('')
+  +(selEdge?`<div class="part on"><b style="font-family:var(--font-d)">Arista de la caja (${{t:'arriba',b:'abajo',v:'pata'}[selEdge[0]]})</b><button id="edgeDel" class="x">Quitar esta arista</button></div>`:'')
+  +((M.off||[]).length?`<div class="muted">${M.off.length} arista${M.off.length>1?'s':''} quitada${M.off.length>1?'s':''} · <button id="edgeRestore" style="font-size:12px;padding:2px 6px">restaurar todas</button></div>`:'')
   +(selObj?`<div class="part on"><b style="font-family:var(--font-d)">Pieza de ${FACES[selObj.k].name}</b><span class="lab">hacia adentro de la caja</span><input id="fsDepth" type="number" value="${Math.round(faceDepth(selObj.k,selObj.oi))}"><span class="muted">cm · o arrastrala en el 3D</span></div>`:'');
+ const ed=$('edgeDel');if(ed)ed.addEventListener('click',del3);const er=$('edgeRestore');if(er)er.addEventListener('click',()=>{M.off=[];selEdge=null;update3()});
  const fd=$('fsDepth');if(fd)fd.addEventListener('change',()=>{setFaceDepth(selObj.k,selObj.oi,+fd.value);if(selObj.k===cur)after();else persist();update3()});
  $('facelist').querySelectorAll('[data-face]').forEach(b=>b.addEventListener('click',()=>{const k=+b.dataset.face;setMode('2d');if(cur!==k)switchView(k)}))}
 function addPart(type){const q={type,plane:'xz',at:M.H,p:$('curProfile').value,sheet:'ch2',dir:'u',sp:3,off:Math.round(M.H/2)};
@@ -837,6 +845,8 @@ const TPL=[
   faces:{fondo:[F('sheet',{p:'ch16',w:120,h:50})]}},
  {id:'estante',name:'Estantería',desc:'Ángulo 1", cuatro niveles de chapa, cruz atrás',M:{W:90,H:180,D:40,p:'an25',edges:{top:true,bot:true,vert:true},parts:[{type:'frame',plane:'xz',at:45,p:'an25'},{type:'frame',plane:'xz',at:90,p:'an25'},{type:'frame',plane:'xz',at:135,p:'an25'},{type:'sheet',plane:'xz',at:45,sheet:'ch16'},{type:'sheet',plane:'xz',at:90,sheet:'ch16'},{type:'sheet',plane:'xz',at:135,sheet:'ch16'},{type:'sheet',plane:'xz',at:180,sheet:'ch16'},{type:'bars',plane:'xy',at:0,p:'pl12',dir:'v',sp:30}]}},
  {id:'parrilla',name:'Parrilla',desc:'Ángulo 1", grilla de redondo 10 cada 3 cm, bandeja de chapa',M:{W:80,H:90,D:50,p:'an25',edges:{top:true,bot:false,vert:true},parts:[{type:'bars',plane:'xz',at:90,p:'re10',dir:'v',sp:3},{type:'frame',plane:'xz',at:60,p:'an25'},{type:'sheet',plane:'xz',at:60,sheet:'ch2'},{type:'bar',plane:'xy',at:0,p:'an25',dir:'u',off:30},{type:'bar',plane:'xy',at:50,p:'an25',dir:'u',off:30}]}},
+ {id:'parrillatapa',name:'Parrilla con tapa',desc:'Cuerpo de chapa sobre patas de ángulo, tapa, parrilla de redondo 10, estante bajo de planchuela y ruedas',M:{W:80,H:90,D:50,p:'an25',edges:{top:false,bot:false,vert:true},parts:[{type:'frame',plane:'xz',at:60,p:'an25'},{type:'sheet',plane:'xz',at:60,sheet:'ch2'},{type:'bars',plane:'xz',at:76,p:'re10',dir:'v',sp:3},{type:'frame',plane:'xz',at:90,p:'an25'},{type:'sheet',plane:'xz',at:90,sheet:'ch16'},{type:'frame',plane:'xz',at:15,p:'tu20'},{type:'bars',plane:'xz',at:15,p:'pl25',dir:'v',sp:8}]},
+  faces:{frente:[F('sheet',{p:'ch16',w:80,h:10}),F('sheet',{p:'ch16',w:80,h:12},0,18),F('cat',{catId:'bisagra'},15,0),F('cat',{catId:'bisagra'},65,0)],fondo:[F('sheet',{p:'ch16',w:80,h:30})],izq:[F('sheet',{p:'ch16',w:50,h:30}),F('cat',{catId:'rueda'},8,82)],der:[F('sheet',{p:'ch16',w:50,h:30}),F('cat',{catId:'rueda'},8,82)]}},
  {id:'chulengo',name:'Chulengo',desc:'Medio tacho de 200 L sobre marco de tubo 30, parrilla de redondo 10, chimenea, estante para leña y ruedas',M:{W:95,H:84,D:60,p:'tu30',edges:{top:true,bot:false,vert:true},parts:[{type:'cyl',axis:'x',pos:{x:47,y:84,z:30},d:57,len:88,half:true,item:'tacho200'},{type:'bars',plane:'xz',at:76,p:'re10',dir:'v',sp:3},{type:'cyl',axis:'y',pos:{x:80,y:104,z:30},d:10,len:50,half:false,item:'chimenea'},{type:'frame',plane:'xz',at:20,p:'tu20'},{type:'sheet',plane:'xz',at:20,sheet:'ch16'},{type:'bar',axis:'x',pos:{x:47,y:50,z:30},p:'tu20'}]},
   faces:{izq:[F('cat',{catId:'rueda'},8,76),F('cat',{catId:'rueda'},52,76)],frente:[F('cat',{catId:'bisagra'},20,0),F('cat',{catId:'bisagra'},75,0)]}},
  {id:'pergola',name:'Pérgola',desc:'Cuatro columnas de tubo 40, marco superior y travesaños 40x20 cada 40 cm',M:{W:300,H:240,D:300,p:'tu40',edges:{top:true,bot:false,vert:true},parts:[{type:'bars',plane:'xz',at:240,p:'tu4020',dir:'v',sp:40}]}},
@@ -894,14 +904,30 @@ $('prName').addEventListener('change',e=>{const p=curPr();if(p){p.name=e.target.
 function fecha(t){return new Date(t).toLocaleDateString('es-AR',{day:'numeric',month:'short'})}
 function renderPrj(){savePr();const G=$('prGrid');
  G.innerHTML=PR.list.map(p=>`<div class="card" data-id="${p.id}" style="cursor:default"><img src="${p.thumb||''}" alt=""><b>${p.name}${p.id===PR.cur?' <span class="muted">(abierto)</span>':''}</b><span>${fecha(p.updated)} · ${num(p.kg||0)} kg · ${fmt(p.total||0)}</span>
-  <div class="row" style="padding:0 8px 8px;gap:4px"><button data-open="${p.id}">Abrir</button><button data-dup="${p.id}">Duplicar</button><button data-exp="${p.id}">Exportar</button><button data-del="${p.id}">Borrar</button></div></div>`).join('');
+  <div class="row" style="padding:0 8px 8px;gap:4px"><button data-open="${p.id}">Abrir</button><button data-dup="${p.id}">Duplicar</button><button data-link="${p.id}" title="Link para mandar por WhatsApp">Link</button><button data-exp="${p.id}">Exportar</button><button data-del="${p.id}">Borrar</button></div></div>`).join('');
  PR.list.forEach(p=>{if(!p.thumb||p.thumbAt!==p.updated){p.thumb=renderThumb(p.M,p.faces);p.thumbAt=p.updated;const im=G.querySelector(`[data-id="${p.id}"] img`);if(im)im.src=p.thumb}});
  try{localStorage.setItem('herreria.projects',JSON.stringify(PR))}catch(e){}
  G.querySelectorAll('[data-open]').forEach(b=>b.addEventListener('click',async()=>{$('prj').hidden=true;await openPr(b.dataset.open)}));
  G.querySelectorAll('[data-dup]').forEach(b=>b.addEventListener('click',()=>{const p=PR.list.find(x=>x.id===b.dataset.dup),c=JSON.parse(JSON.stringify(p));c.id=uid();c.name=p.name+' (copia)';c.updated=Date.now();PR.list.unshift(c);renderPrj()}));
  G.querySelectorAll('[data-exp]').forEach(b=>b.addEventListener('click',()=>exportPr(PR.list.find(x=>x.id===b.dataset.exp))));
+ G.querySelectorAll('[data-link]').forEach(b=>b.addEventListener('click',()=>{savePr();shareLink(PR.list.find(x=>x.id===b.dataset.link))}));
  G.querySelectorAll('[data-del]').forEach(b=>b.addEventListener('click',()=>{if(b.dataset.armed){const i=PR.list.findIndex(x=>x.id===b.dataset.del);const wasCur=PR.list[i].id===PR.cur;PR.list.splice(i,1);
    if(wasCur){PR.cur=null;if(PR.list.length)openPr(PR.list[0].id);else{newPr();applyTpl(TPL[1])}}renderPrj()}else{b.dataset.armed='1';b.textContent='¿Borrar? Sí';b.classList.add('warn');setTimeout(()=>{b.dataset.armed='';b.textContent='Borrar';b.classList.remove('warn')},3000)}}))}
+// Link para compartir: el proyecto comprimido (deflate + base64url) en el hash de la URL. Solo en hosting propio; el visor de artifacts no pasa hashes largos.
+async function packStr(txt){const bytes=new TextEncoder().encode(txt);let out=bytes,pre='r';
+ if(window.CompressionStream){const cs=new CompressionStream('deflate-raw');const w=cs.writable.getWriter();w.write(bytes);w.close();out=new Uint8Array(await new Response(cs.readable).arrayBuffer());pre='d'}
+ let b='';out.forEach(x=>b+=String.fromCharCode(x));return pre+btoa(b).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'')}
+async function unpackStr(str){const pre=str[0],b64=str.slice(1).replace(/-/g,'+').replace(/_/g,'/');const bin=atob(b64);let bytes=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);
+ if(pre==='d'){const ds=new DecompressionStream('deflate-raw');const w=ds.writable.getWriter();w.write(bytes);w.close();bytes=new Uint8Array(await new Response(ds.readable).arrayBuffer())}return new TextDecoder().decode(bytes)}
+async function shareLink(p){const {thumb,thumbAt,...clean}=p;const packed=await packStr(JSON.stringify({v:1,project:clean,profiles:(S.profiles||[]).filter(x=>!x.hidden)}));
+ const url=location.origin+location.pathname+'#p='+packed;$('prIO').hidden=false;$('prText').value=url;
+ if(INART){$('prIOmsg').textContent='Este link solo funciona desde la página propia (GitHub Pages), no desde el visor de artifacts. Lo generé con la dirección de este visor: cambiá la parte antes de # por la de la página.';return}
+ try{await navigator.clipboard.writeText(url);$('prIOmsg').textContent=`Link copiado (${Math.round(url.length/1024)} KB). Quien lo abra recibe una copia del proyecto.`}catch(e){$('prIOmsg').textContent='Copiá el link del cuadro y mandalo por WhatsApp.'}}
+async function receiveLink(){const m=/^#p=(.+)$/.exec(location.hash||'');if(!m)return false;
+ try{const j=JSON.parse(await unpackStr(decodeURIComponent(m[1])));const p=j.project;if(!p||!p.M)return false;
+  if(Array.isArray(j.profiles)){S.profiles=S.profiles||[];j.profiles.forEach(x=>{if(!S.profiles.find(y=>y.id===x.id))S.profiles.push(x)});saveCfg();applyProfiles();renderPrices()}
+  p.id=uid();p.updated=Date.now();p.exportedAt=p.updated;p.name=(p.name||'Proyecto')+' (recibido)';p.faces=p.faces||{};delete p.thumb;PR.list.unshift(p);PR.cur=p.id;try{localStorage.setItem('herreria.projects',JSON.stringify(PR))}catch(e){}history.replaceState(null,'',location.pathname+location.search);await openPr(p.id);return true}
+ catch(e){console.warn('link inválido',e);return false}}
 async function exportPr(p){const {thumb,thumbAt,...clean}=p;const txt=JSON.stringify({app:'cotizador-herreria',v:1,project:clean}),fname=(p.name||'proyecto').replace(/[^\w\-]+/g,'_')+'.json';$('prIO').hidden=false;$('prText').value=txt;
  p.exportedAt=Date.now();savePr();backupCheck();
  if(INART){$('prIOmsg').textContent='Copiá este texto y pegalo en "Importar" en el otro aparato.';try{const dl=await claude.use('downloads');if(dl){await dl.save({filename:fname,data:txt});$('prIOmsg').textContent='Archivo guardado. También podés copiar el texto.'}}catch(e){}}
@@ -926,6 +952,7 @@ $('backupAll').addEventListener('click',exportAll);$('prExportAll').addEventList
 $('backupLater').addEventListener('click',()=>{PR.snooze=Date.now()+7*864e5;savePr();backupCheck()});
 if(/iPhone|iPad/.test(navigator.userAgent)&&!navigator.standalone)$('iosHint').hidden=false;
 $('btnPrj').addEventListener('click',()=>{$('prj').hidden=false;$('prIO').hidden=true;renderPrj()});
+$('btnShare').addEventListener('click',()=>{savePr();$('prj').hidden=false;renderPrj();shareLink(curPr())});
 $('prClose').addEventListener('click',()=>{$('prj').hidden=true});
 $('prNew').addEventListener('click',async()=>{$('prj').hidden=true;savePr();newPr();M={W:150,H:120,D:3,p:'tu30',edges:{top:false,bot:false,vert:false},parts:[]};views.forEach(v=>v.json=null);cur=0;sel3=null;renderForm();frameCam();await load(null);undo=[];hist3=[];renderTabs();update3();fitView();openGal()});
 $('prImport').addEventListener('click',()=>{$('prIO').hidden=false;$('prText').value='';$('prIOmsg').textContent=INART?'Pegá el texto del proyecto y tocá "Cargar lo pegado".':'Elegí el archivo .json o pegá el texto del proyecto.'});
@@ -938,7 +965,7 @@ if(INART)$('prFile').hidden=true;
 theme();fit();applyProfiles();renderPrices();renderPieces();
 matchMedia('(prefers-color-scheme: dark)').addEventListener('change',theme);
 loadPR();
-if(PR.cur&&curPr()){openPr(PR.cur)}else{newPr('Proyecto 1');applyTpl(TPL[1]).then(()=>setTimeout(openGal,400))}
+receiveLink().then(ok=>{if(ok)return;if(PR.cur&&curPr()){openPr(PR.cur)}else{newPr('Proyecto 1');applyTpl(TPL[1]).then(()=>setTimeout(openGal,400))}});
 backupCheck();
 renderProps();setMode(S.mode||'2d');
 </script>
