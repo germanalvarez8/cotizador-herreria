@@ -77,7 +77,6 @@ th{font-family:var(--font-d);font-weight:600;letter-spacing:.04em;text-transform
 .muted{color:var(--muted);font-size:12px}
 .warn{color:var(--warn)}
 .tbl{overflow-x:auto}
-#work input{width:66px;display:inline-block;padding:3px 5px;margin:1px 0}#work td:nth-child(4){white-space:nowrap}
 .cuts{font-size:11px;color:var(--muted)}
 .status{font-size:13px;min-height:1.4em}
 /* modo 3D */
@@ -217,18 +216,13 @@ th{font-family:var(--font-d);font-weight:600;letter-spacing:.04em;text-transform
       <h2>Materiales</h2>
       <div class="tbl"><table id="bom"></table></div>
       <div id="origen"></div>
-      <h2 style="margin-top:10px">Mano de obra y consumibles</h2>
-      <div class="muted">Salen del dibujo: cortes, uniones soldadas y superficie a pintar. Los factores son de arranque: si un número no te cierra, corregilo acá y queda guardado.</div>
-      <div class="tbl"><table id="work"></table></div>
       <div class="row">
-        <label>Horas extra (armado, ajuste, traslado)<input id="fExtraH" type="number" step=".5"></label>
-        <label>Otros gastos ($)<input id="extras" type="number" min="0" step="100"></label>
+        <label>Mano de obra (% sobre material)<input id="labor" type="number" min="0" step="5"></label>
+        <label>Consumibles: soldadura, discos, pintura (% sobre material)<input id="cons" type="number" min="0" step="1"></label>
       </div>
       <div class="row" style="justify-content:space-between">
         <div><div class="muted">Peso</div><div class="tot" id="kg"></div></div>
         <div><div class="muted">Material</div><div class="tot" id="mat"></div></div>
-        <div><div class="muted">Mano de obra</div><div class="tot" id="labor"></div></div>
-        <div><div class="muted">Consumibles</div><div class="tot" id="cons"></div></div>
         <div><div class="muted">Precio sugerido</div><div class="tot" id="total"></div></div>
       </div>
       <div class="muted">Barras de 6 m, corte 3 mm. Los precios son <b>ejemplo</b>, editalos abajo.</div>
@@ -323,14 +317,7 @@ function sheetM2(o){if(o.kind!=='sheet'||o.ref)return 0;return o.width*(o.scaleX
 // First-fit decreasing en barras de 6 m. ponytail: alcanza para un taller; si el desperdicio molesta, probar búsqueda local.
 function pack(lengths,L=BAR,kerf=KERF){const ls=[...lengths].sort((a,b)=>b-a),bars=[];
  for(const l of ls){let b=bars.find(b=>b.rem>=l);if(!b){b={rem:L,cuts:[]};bars.push(b)}b.cuts.push(l);b.rem-=l+kerf}return bars}
-// Factores de taller, todos editables en pantalla. ponytail: valores de arranque para un taller chico con electrodo y amoladora; el herrero los corrige.
-const FACT={minCut:3,minWeld:6,minM2:20,weldK:2,weldPrice:1500,cutsDisc:40,discPrice:3500,m2L:5,paintPrice:9000,rate:10000,extraH:0};
-// Trabajo que sale de la geometría: un corte por pieza (4 por chapa), uniones soldadas contadas en objects3d, superficie = perímetro del perfil × largo (≈4 × ancho) + 2 caras de chapa.
-function work(objs,S,welds){const f={...FACT,...(S.f||{})};let cuts=0,m2=0;
- for(const o of objs){if(o.ref)continue;const q=Math.max(1,o.qty||1);if(o.kind==='sheet'){cuts+=4*q;m2+=2*sheetM2(o)}else for(const [p,l] of pieces(o)){cuts++;m2+=4*(P[p]||P.cu12).w*l/1e4}}
- const w=welds||{n:0,cm:0},weldM=w.cm*f.weldK/100,discs=Math.ceil(cuts/f.cutsDisc),liters=m2/f.m2L,hours=(cuts*f.minCut+w.n*f.minWeld+m2*f.minM2)/60+f.extraH;
- return {f,cuts,welds:w.n,weldM,discs,m2,liters,hours,labor:hours*f.rate,cons:weldM*f.weldPrice+discs*f.discPrice+liters*f.paintPrice}}
-function calc(objs,S,welds){
+function calc(objs,S){
  const by={};
  for(const o of objs)for(const [p,l] of pieces(o))(by[p]=by[p]||[]).push(l);
  const rows=Object.entries(by).map(([p,ls])=>{const bars=pack(ls),m=ls.reduce((a,b)=>a+b,0)/100,kg=m*P[p].kgm,cost=bars.length*(S.prices[p]??P[p].price);
@@ -340,8 +327,8 @@ function calc(objs,S,welds){
  const sh={};for(const o of objs){const a=sheetM2(o);if(a)sh[o.p]=(sh[o.p]||0)+a}
  const sheetRows=Object.entries(sh).map(([id,m2])=>{const x=SH[id],hojas=Math.ceil(m2*SHEET_WASTE/SHEET_M2);return {id,name:x.name,m2,kg:m2*x.e/1000*7850,hojas,cost:hojas*((S.sheetPrices||{})[id]??x.price)}});
  const kg=rows.reduce((a,r)=>a+r.kg,0)+sheetRows.reduce((a,r)=>a+r.kg,0),mat=rows.reduce((a,r)=>a+r.cost,0)+catRows.reduce((a,r)=>a+r.cost,0)+sheetRows.reduce((a,r)=>a+r.cost,0);
- const wk=work(objs,S,welds),extras=+S.extras||0;
- return {rows,catRows,sheetRows,kg,mat,wk,extras,total:mat+wk.labor+wk.cons+extras};
+ const labor=mat*(+S.labor||0)/100,cons=mat*(+S.cons||0)/100;
+ return {rows,catRows,sheetRows,kg,mat,labor,cons,total:mat+labor+cons};
 }
 // ===== calc-end =====
 
@@ -351,9 +338,9 @@ function applyProfiles(){PROFILES=[...BUILTIN,...(S.profiles||[])];P=Object.from
 const fmt=n=>'$ '+Math.round(n).toLocaleString('es-AR');
 const num=(n,d=1)=>n.toLocaleString('es-AR',{maximumFractionDigits:d});
 const css=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
-let S={snap:5,extras:0,prices:{},catPrices:{},sheetPrices:{},mode:'2d',profiles:[],pieces:[],f:{}};
+let S={snap:5,labor:100,cons:10,prices:{},catPrices:{},sheetPrices:{},mode:'2d',profiles:[],pieces:[]};
 try{Object.assign(S,JSON.parse(localStorage.getItem('herreria.cfg'))||{})}catch(e){}
-if(!S.f){S.f={};if(S.extras===15000)S.extras=0}// antes había un % de mano de obra y un fijo de pintura; ahora salen de la geometría
+if(S.cons==null)S.cons=10;delete S.f;delete S.extras;// antes: fijo de pintura y consumibles en $; ahora un % sobre material
 const PROPS=['kind','p','sp','dir','sweep','turns','r','r0','r1','bw','bh','catId','qty','ref','inset','depth','lockScalingX','lockScalingY','perPixelTargetFind'];
 
 // ---- plano ----
@@ -553,7 +540,7 @@ function apply(o,k,v){const st=css('--steel');let n=o;
 
 // ---- materiales ----
 function bomObjects(){return objects3d()}
-function renderBom(){const r=calc(bomObjects(),S,BOMINFO.welds);
+function renderBom(){const r=calc(bomObjects(),S);
  $('bom').innerHTML=`<tr><th>Perfil</th><th>Piezas</th><th>Metros</th><th>Barras</th><th>Desp.</th><th>kg</th><th>Costo</th></tr>`
  +r.rows.map(x=>`<tr><td>${x.name}${x.over?' <span class="warn">(pieza &gt; 6 m)</span>':''}<div class="cuts">${x.cuts.map(b=>'['+b.cuts.map(c=>num(c,0)).join('+')+(b.rem>=20?' · sobra '+num(b.rem,0):'')+']').join(' ')}</div></td><td>${x.n}</td><td>${num(x.m,2)}</td><td>${x.bars}</td><td>${num(x.waste*100,0)}%</td><td>${num(x.kg)}</td><td>${fmt(x.cost)}</td></tr>`).join('')
  +r.sheetRows.map(x=>`<tr><td>${x.name}<div class="cuts">${num(x.m2,2)} m² netos, ${Math.round((SHEET_WASTE-1)*100)}% desperdicio</div></td><td></td><td></td><td>${x.hojas} hoja${x.hojas>1?'s':''}</td><td></td><td>${num(x.kg)}</td><td>${fmt(x.cost)}</td></tr>`).join('')
@@ -561,18 +548,7 @@ function renderBom(){const r=calc(bomObjects(),S,BOMINFO.welds);
  +(r.rows.length+r.catRows.length+r.sheetRows.length?'':'<tr><td colspan="7" class="muted">El plano está vacío. Agregá un marco para empezar.</td></tr>');
  const bi=BOMINFO,src=bi.bySrc.filter(b=>b.n||b.cat||b.m2).map(b=>`<b>${b.src}</b>: ${b.n?b.n+' hierros, '+num(b.m,1)+' m':''}${b.cat?(b.n?' · ':'')+b.cat+' pzas catálogo':''}${b.m2?(b.n||b.cat?' · ':'')+num(b.m2,2)+' m² chapa':''}`).join('<br>');
  $('origen').innerHTML=(src?`<div class="muted" style="margin-top:4px">De dónde sale: <br>${src}</div>`:'')+(bi.dups?`<div class="muted">${bi.dups} hierro${bi.dups>1?'s':''} superpuesto${bi.dups>1?'s':''} (arista de caja y borde dibujado en el mismo lugar) contado${bi.dups>1?'s':''} una sola vez.</div>`:'')+bi.warn.map(w=>`<div class="warn">${w}</div>`).join('');
- LAST={kg:r.kg,total:r.total};$('kg').textContent=num(r.kg)+' kg';$('mat').textContent=fmt(r.mat);$('labor').textContent=fmt(r.wk.labor);$('cons').textContent=fmt(r.wk.cons);$('total').textContent=fmt(r.total);renderWork(r.wk)}
-// Tabla de trabajo: cantidad que sale del dibujo, factor editable, costo. Los inputs disparan 'change' para no cortar la escritura.
-function renderWork(w){const f=w.f,I=(k,step,t)=>`<input data-f="${k}" type="number" step="${step}" value="${f[k]}" title="${t}">`,hc=x=>num(x,1)+' h';
- $('work').innerHTML=`<tr><th>Qué</th><th>Sale del dibujo</th><th>Factor</th><th>Costo</th></tr>
- <tr><td>Cortes</td><td>${w.cuts}</td><td>${I('minCut',1,'minutos por corte')} min c/u</td><td>${hc(w.cuts*f.minCut/60)}</td></tr>
- <tr><td>Uniones soldadas</td><td>${w.welds}</td><td>${I('minWeld',1,'minutos por unión')} min c/u</td><td>${hc(w.welds*f.minWeld/60)}</td></tr>
- <tr><td>Pintura (2 manos)</td><td>${num(w.m2,2)} m²</td><td>${I('minM2',5,'minutos por m²')} min/m²</td><td>${hc(w.m2*f.minM2/60)}</td></tr>
- <tr><td>Horas totales</td><td>${hc(w.hours)}${f.extraH?` <span class="muted">(${num(f.extraH,1)} extra)</span>`:''}</td><td>${I('rate',500,'$ por hora')} $/h</td><td><b>${fmt(w.labor)}</b></td></tr>
- <tr><td>Soldadura (electrodo o alambre)</td><td>${num(w.weldM,2)} m de cordón</td><td>${I('weldK',.5,'cm de cordón por cm de ancho del perfil')} cm/cm · ${I('weldPrice',100,'$ por metro de cordón')} $/m</td><td>${fmt(w.weldM*f.weldPrice)}</td></tr>
- <tr><td>Discos de corte</td><td>${w.discs}</td><td>${I('cutsDisc',5,'cortes por disco')} cortes/disco · ${I('discPrice',100,'$ por disco')} $</td><td>${fmt(w.discs*f.discPrice)}</td></tr>
- <tr><td>Pintura</td><td>${num(w.liters,2)} L</td><td>${I('m2L',.5,'m² por litro, dos manos')} m²/L · ${I('paintPrice',500,'$ por litro')} $/L</td><td>${fmt(w.liters*f.paintPrice)}</td></tr>`;
- $('work').querySelectorAll('[data-f]').forEach(i=>i.addEventListener('change',()=>{S.f[i.dataset.f]=+i.value;saveCfg();renderBom()}));$('fExtraH').value=f.extraH;$('extras').value=S.extras}
+ LAST={kg:r.kg,total:r.total};$('kg').textContent=num(r.kg)+' kg';$('mat').textContent=fmt(r.mat);$('total').textContent=fmt(r.total)}
 function renderPrices(){
  $('prices').innerHTML=`<tr><th>Perfil</th><th>kg/m</th><th>$ / barra</th></tr>`+PROFILES.filter(p=>!p.hidden).map(p=>`<tr><td>${p.name}${p.custom?' <span class="muted">(propio)</span>':''}</td><td>${num(p.kgm,3)}</td><td><input data-price="${p.id}" type="number" step="100" value="${S.prices[p.id]??p.price}">${p.custom?` <button data-hideprof="${p.id}" title="Quitar de las listas">×</button>`:''}</td></tr>`).join('');
  document.querySelectorAll('[data-hideprof]').forEach(b=>b.addEventListener('click',()=>{const p=(S.profiles||[]).find(x=>x.id===b.dataset.hideprof);if(p){p.hidden=true;saveCfg();applyProfiles();renderPrices()}}));
@@ -581,12 +557,12 @@ function renderPrices(){
  $('catprices').innerHTML=`<tr><th>Pieza</th><th>$ / unidad</th></tr>`+CATALOG.map(c=>`<tr><td>${c.name}</td><td><input data-cprice="${c.id}" type="number" step="50" value="${S.catPrices[c.id]??c.price}"></td></tr>`).join('');
  document.querySelectorAll('[data-price]').forEach(i=>i.addEventListener('input',()=>{S.prices[i.dataset.price]=+i.value;renderBom();saveCfg()}));
  document.querySelectorAll('[data-cprice]').forEach(i=>i.addEventListener('input',()=>{S.catPrices[i.dataset.cprice]=+i.value;renderBom();saveCfg()}));
- }
+ $('labor').value=S.labor;$('cons').value=S.cons}
 function saveCfg(){try{localStorage.setItem('herreria.cfg',JSON.stringify(S))}catch(e){}}
 $('btnNewProf').addEventListener('click',()=>{const p=mkProfile($('npType').value,$('npA').value,$('npB').value,$('npE').value,$('npPrice').value);if(!p){$('npMsg').textContent='Faltan medidas: al menos el lado o diámetro, y el espesor cuando corresponde.';return}
  S.profiles=S.profiles||[];S.profiles.push(p);saveCfg();applyProfiles();renderPrices();$('npMsg').textContent=`Agregado: ${p.name}, ${num(p.kgm,3)} kg/m. Ya está en las listas de perfil.`;$('npA').value=$('npB').value=$('npE').value=$('npPrice').value=''});
-$('fExtraH').addEventListener('change',e=>{S.f.extraH=+e.target.value||0;renderBom();saveCfg()});
-$('extras').addEventListener('change',e=>{S.extras=+e.target.value||0;renderBom();saveCfg()});
+$('labor').addEventListener('input',e=>{S.labor=+e.target.value||0;renderBom();saveCfg()});
+$('cons').addEventListener('input',e=>{S.cons=+e.target.value||0;renderBom();saveCfg()});
 // ---- piezas propias: una selección del plano guardada con nombre, para insertar en cualquier cara ----
 function pieceThumb(objs,cb){const sc=new fabric.StaticCanvas(null,{width:160,height:100,backgroundColor:css('--panel')});
  fabric.util.enlivenObjects(objs,os=>{os.forEach(o=>{o.set('opacity',1);sc.add(o)});let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;os.forEach(o=>{const b=o.getBoundingRect(true,true);x0=Math.min(x0,b.left);y0=Math.min(y0,b.top);x1=Math.max(x1,b.left+b.width);y1=Math.max(y1,b.top+b.height)});
@@ -604,9 +580,9 @@ function renderPieces(){const L=$('pieces'),ps=S.pieces||[];L.innerHTML=ps.lengt
  L.querySelectorAll('[data-piece]').forEach(b=>b.addEventListener('click',()=>insertPiece(ps.find(x=>x.id===b.dataset.piece))));
  L.querySelectorAll('[data-piecedel]').forEach(b=>b.addEventListener('click',()=>{if(b.dataset.armed){S.pieces=ps.filter(x=>x.id!==b.dataset.piecedel);saveCfg();renderPieces()}else{b.dataset.armed='1';b.textContent='¿Quitar?';setTimeout(()=>{b.dataset.armed='';b.textContent='×'},3000)}}))}
 $('btnPieceSave').addEventListener('click',savePiece);
-function summary(){const r=calc(bomObjects(),S,BOMINFO.welds),w=r.wk;return ['PRESUPUESTO HERRERÍA','',...r.rows.map(x=>`• ${x.name}: ${x.bars} barra(s) de 6 m (${num(x.m,1)} m útiles, ${num(x.kg)} kg) ${fmt(x.cost)}`),...r.sheetRows.map(x=>`• ${x.name}: ${x.hojas} hoja(s) de 1x2 m (${num(x.m2,2)} m², ${num(x.kg)} kg) ${fmt(x.cost)}`),...r.catRows.map(x=>`• ${x.name} x${x.n}: ${fmt(x.cost)}`),'',`Peso total: ${num(r.kg)} kg`,`Material: ${fmt(r.mat)}`,`Mano de obra: ${num(w.hours,1)} h (${w.cuts} cortes, ${w.welds} soldaduras, ${num(w.m2,1)} m² de pintura) ${fmt(w.labor)}`,`Consumibles (soldadura, discos, pintura): ${fmt(w.cons)}`,...(r.extras?[`Otros: ${fmt(r.extras)}`]:[]),`TOTAL: ${fmt(r.total)}`].join('\n')}
+function summary(){const r=calc(bomObjects(),S);return ['PRESUPUESTO HERRERÍA','',...r.rows.map(x=>`• ${x.name}: ${x.bars} barra(s) de 6 m (${num(x.m,1)} m útiles, ${num(x.kg)} kg) ${fmt(x.cost)}`),...r.sheetRows.map(x=>`• ${x.name}: ${x.hojas} hoja(s) de 1x2 m (${num(x.m2,2)} m², ${num(x.kg)} kg) ${fmt(x.cost)}`),...r.catRows.map(x=>`• ${x.name} x${x.n}: ${fmt(x.cost)}`),'',`Peso total: ${num(r.kg)} kg`,`Material: ${fmt(r.mat)}`,`Mano de obra (${S.labor}%): ${fmt(r.labor)}`,`Consumibles (${S.cons}%): ${fmt(r.cons)}`,`TOTAL: ${fmt(r.total)}`].join('\n')}
 // Machete de taller: qué cortar, cuántos y cómo repartir cada barra. Agrupado por perfil.
-function cutList(){const objs=objects3d(),r=calc(objs,S,BOMINFO.welds),p=curPr(),L=[`LISTA DE CORTES · ${p?p.name:''}`,`Caja ${M.W} × ${M.H} × ${M.D} cm exteriores · largos exteriores, corte a inglete o lado seguro`,''];
+function cutList(){const objs=objects3d(),r=calc(objs,S),p=curPr(),L=[`LISTA DE CORTES · ${p?p.name:''}`,`Caja ${M.W} × ${M.H} × ${M.D} cm exteriores · largos exteriores, corte a inglete o lado seguro`,''];
  const L1=x=>num(x,1);
  r.rows.forEach(row=>{L.push(`${row.name.toUpperCase()} · ${row.bars} barra${row.bars>1?'s':''} de 6 m`);
   const g={};objs.filter(o=>o.kind==='seg'&&o.p===row.p).forEach(o=>{const len=Math.round(o.width*(o.scaleX||1)/PX*2)/2,k=`${len}|${o.what||''}|${o.src||''}`;g[k]=g[k]||{len,what:o.what||'',src:o.src||'',n:0};g[k].n+=Math.max(1,o.qty||1)});
@@ -615,7 +591,7 @@ function cutList(){const objs=objects3d(),r=calc(objs,S,BOMINFO.welds),p=curPr()
  r.sheetRows.forEach(x=>{L.push(`${x.name.toUpperCase()} · ${x.hojas} hoja${x.hojas>1?'s':''} de 1×2 m`);
   objs.filter(o=>o.kind==='sheet'&&o.p===x.id&&!o.ref).forEach(o=>L.push(`□ ${Math.max(1,o.qty||1)} × ${L1(o.width*(o.scaleX||1)/PX)} × ${L1(o.height*(o.scaleY||1)/PX)} cm · ${o.what||'chapa'}${o.src?' · '+o.src:''}`));L.push('')});
  if(r.catRows.length){L.push('CATÁLOGO');r.catRows.forEach(x=>L.push(`□ ${x.n} × ${x.name}`));L.push('')}
- L.push(`Total ${num(r.kg)} kg · ${r.wk.cuts} cortes · ${r.wk.welds} uniones soldadas`);return L.join('\n')}
+ L.push(`Total ${num(r.kg)} kg`);return L.join('\n')}
 $('btnCuts').addEventListener('click',async()=>{const t=cutList();try{await navigator.clipboard.writeText(t);$('btnCuts').textContent='Copiada'}catch(e){const ta=document.createElement('textarea');ta.value=t;ta.style.width='100%';ta.style.minHeight='160px';$('btnCuts').after(ta);ta.select();$('btnCuts').textContent='Seleccioná y copiá el texto'}setTimeout(()=>$('btnCuts').textContent='Copiar lista de cortes para el taller',2500)});
 $('btnCopy').addEventListener('click',async()=>{const t=summary();try{await navigator.clipboard.writeText(t);$('btnCopy').textContent='Copiado'}catch(e){const ta=document.createElement('textarea');ta.value=t;ta.style.width='100%';$('btnCopy').after(ta);ta.select();$('btnCopy').textContent='Seleccioná y copiá el texto'}setTimeout(()=>$('btnCopy').textContent='Copiar presupuesto para WhatsApp',2500)});
 
@@ -682,7 +658,7 @@ let BOMINFO={dups:0,warn:[],bySrc:[]};
 function normBar(q){if(q.axis)return q;const pl=PLANES[q.plane||'xy'];q.axis=q.dir==='v'?pl.v:pl.u;q.pos={x:M.W/2,y:M.H/2,z:M.D/2};q.pos[pl.n]=q.at||0;q.pos[q.dir==='v'?pl.u:pl.v]=q.off||0;return q}
 function objects3d(){const {ms,sh,ex,cy}=members(),seen=new Map(),geo=new Map(),curves=new Map(),out=[],warn=[];let dups=0;
  const r=v=>v.map(x=>Math.round(x*2)/2).join(','),gk=(a,b)=>{const A=r(a),B=r(b);return A<B?A+'|'+B:B+'|'+A},len=(a,b)=>Math.hypot(b[0]-a[0],b[1]-a[1],b[2]-a[2]);
-const segs=[],addS=(p,a,b,qty,src,L,what)=>{if(len(a,b)<.05)return;const g=gk(a,b),k=p+'|'+g;if(seen.has(k)){dups++;seen.get(k).qty=Math.max(seen.get(k).qty,qty);return}segs.push({p,a,b,qty});
+const addS=(p,a,b,qty,src,L,what)=>{if(len(a,b)<.05)return;const g=gk(a,b),k=p+'|'+g;if(seen.has(k)){dups++;seen.get(k).qty=Math.max(seen.get(k).qty,qty);return}
   if(geo.has(g)&&geo.get(g)!==p){const w=`${P[geo.get(g)].name} y ${P[p].name} ocupan el mismo lugar (${src}). Se cuentan los dos.`;if(!warn.includes(w))warn.push(w)}geo.set(g,p);
   const e={kind:'seg',p,width:(L||len(a,b))*PX,qty,src,what};seen.set(k,e);out.push(e)};
  ms.forEach(m=>addS(m.p,m.a,m.b,1,m.i<0?'Caja':'Partes interiores',m.L,m.what));
@@ -696,14 +672,8 @@ const segs=[],addS=(p,a,b,qty,src,L,what)=>{if(len(a,b)<.05)return;const g=gk(a,
  cy.forEach(c=>{if(C[c.item])out.push({kind:'cat',catId:c.item,qty:1,src:'Partes interiores'});else if(SH[c.item])out.push({kind:'sheet',p:c.item,width:Math.PI*c.d*(c.half?.5:1)*PX,height:c.len*PX,src:'Partes interiores',what:(c.half?'medio tambor':'cilindro')+' de chapa'})});
  FACES.forEach(f=>viewObjs(f.id).forEach(o=>{if((o.kind==='cat'||o.kind==='sheet')&&!o.ref)out.push({...o,src:f.name})}));
  const by={};out.forEach(o=>{const q=Math.max(1,o.qty||1),b=by[o.src]=by[o.src]||{src:o.src,n:0,m:0,cat:0,m2:0};if(o.kind==='seg'){b.n+=q;b.m+=o.width*(o.scaleX||1)/PX*q/100}else if(o.kind==='cat')b.cat+=q;else b.m2+=sheetM2(o)});
- BOMINFO={dups,warn,bySrc:Object.values(by),welds:welds(segs)};return out}
-// Uniones soldadas: cada extremo de hierro que toca otro hierro es una unión; los extremos que coinciden en el mismo punto cuentan una sola vez.
-// cm = ancho del perfil más fino de cada unión (la longitud del cordón sale de eso × factor). ponytail: O(n²), sobra para un taller; chapas no suman uniones.
-function welds(segs){const ws=s=>Math.max((P[s.p]||P.cu12).w,.8),J=new Map();
- const dist=(p,s)=>{const [ax,ay,az]=s.a,dx=s.b[0]-ax,dy=s.b[1]-ay,dz=s.b[2]-az,L2=dx*dx+dy*dy+dz*dz||1;const t=Math.max(0,Math.min(1,((p[0]-ax)*dx+(p[1]-ay)*dy+(p[2]-az)*dz)/L2));return Math.hypot(p[0]-ax-t*dx,p[1]-ay-t*dy,p[2]-az-t*dz)};
- segs.forEach((s,i)=>[s.a,s.b].forEach(e=>{let best=null;segs.forEach((t,j)=>{if(j!==i&&dist(e,t)<=(ws(s)+ws(t))*.6+.5){const w=Math.min(ws(s),ws(t));if(best==null||w<best)best=w}});
-  if(best!=null){const k=e.map(x=>Math.round(x)).join(','),c=J.get(k);J.set(k,{w:c?Math.min(c.w,best):best,q:Math.max(c?c.q:0,s.qty||1)})}}));
- let n=0,cm=0;J.forEach(c=>{n+=c.q;cm+=c.q*c.w});return {n,cm}}
+BOMINFO={dups,warn,bySrc:Object.values(by)};return out}
+ 
 
 // escena
 const c3=$('c3'),wrap3=$('wrap3');
@@ -1010,12 +980,11 @@ async function exportPr(p){const {thumb,thumbAt,...clean}=p;const txt=JSON.strin
 function importText(txt){let j;try{j=JSON.parse(txt)}catch(e){$('prIOmsg').textContent='Eso no es un proyecto válido.';return}
  if(j&&Array.isArray(j.profiles)){S.profiles=S.profiles||[];j.profiles.forEach(p=>{if(!S.profiles.find(x=>x.id===p.id))S.profiles.push(p)})}
  if(j&&Array.isArray(j.pieces)){S.pieces=S.pieces||[];j.pieces.forEach(p=>{if(!S.pieces.find(x=>x.id===p.id))S.pieces.push(p)})}
- if(j&&j.f&&typeof j.f==='object')S.f={...S.f,...j.f};
- if(j&&(j.profiles||j.pieces||j.f)){saveCfg();applyProfiles();renderPrices();renderPieces();renderBom()}
+ if(j&&(j.profiles||j.pieces)){saveCfg();applyProfiles();renderPrices();renderPieces()}
  const list=j&&(j.projects||(j.project?[j.project]:null));
  if(!list||!list.length||list.some(p=>!p||!p.M||!p.M.parts)){$('prIOmsg').textContent='Eso no es un proyecto válido.';return}
  list.forEach(p=>{p.id=uid();p.updated=Date.now();p.exportedAt=p.updated;p.faces=p.faces||{};delete p.thumb;PR.list.unshift(p)});$('prIOmsg').textContent='Importado: '+list.map(p=>p.name).join(', ');$('prText').value='';renderPrj()}
-async function exportAll(){savePr();const now=Date.now(),clean=PR.list.map(({thumb,thumbAt,...p})=>p),txt=JSON.stringify({app:'cotizador-herreria',v:1,projects:clean,profiles:S.profiles||[],pieces:S.pieces||[],prices:S.prices,catPrices:S.catPrices,sheetPrices:S.sheetPrices,f:S.f}),fname='proyectos-herreria-'+new Date().toISOString().slice(0,10)+'.json';
+async function exportAll(){savePr();const now=Date.now(),clean=PR.list.map(({thumb,thumbAt,...p})=>p),txt=JSON.stringify({app:'cotizador-herreria',v:1,projects:clean,profiles:S.profiles||[],pieces:S.pieces||[],prices:S.prices,catPrices:S.catPrices,sheetPrices:S.sheetPrices}),fname='proyectos-herreria-'+new Date().toISOString().slice(0,10)+'.json';
  $('prj').hidden=false;$('prIO').hidden=false;$('prText').value=txt;
  if(INART){$('prIOmsg').textContent='Copiá este texto y guardalo (o pegalo en "Importar" en otro aparato).';try{const dl=await claude.use('downloads');if(dl){await dl.save({filename:fname,data:txt});$('prIOmsg').textContent='Archivo guardado con todos los proyectos.'}}catch(e){}}
  else{$('prIOmsg').textContent='Se descargó un archivo con todos los proyectos. Guardalo en Drive, WhatsApp o donde quieras.';const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([txt],{type:'application/json'}));a.download=fname;document.body.appendChild(a);a.click();a.remove()}
