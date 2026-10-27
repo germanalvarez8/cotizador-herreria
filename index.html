@@ -264,6 +264,7 @@ let PROFILES=[
  {id:'tu30',name:'Tubo 30x30x1.2',w:3,kgm:1.085,price:20000},
  {id:'tu4020',name:'Tubo 40x20x1.2',w:3,kgm:1.085,price:20500},
  {id:'tu40',name:'Tubo 40x40x1.6',w:4,kgm:1.93,price:34000},
+ {id:'ca25',name:'Caño redondo 1" x 1.2',w:2.54,kgm:0.716,price:15000},
  {id:'an25',name:'Ángulo 1" x 1/8"',w:2.54,kgm:1.185,price:17000},
 ];
 const CATALOG=[
@@ -283,7 +284,8 @@ const SHEETS=[
  {id:'ch2',name:'Chapa 2 mm',e:2,price:47000},
  {id:'ch3',name:'Chapa 3 mm',e:3,price:70000},
  {id:'ch475',name:'Chapa 4,75 mm',e:4.75,price:110000},
- {id:'malla',name:'Malla / enrejado fino',e:0,kgm2:2.5,price:28000,mesh:true}, // ponytail: panel de 1×2 m como la chapa; el kg/m² es orientativo (electrosoldada 15×15 ⌀4,2 ≈ 2 kg/m², desplegado ≈ 3)
+ {id:'malla',name:'Malla / enrejado fino',e:0,kgm2:2.5,price:28000,mesh:true},
+ {id:'mad18',name:'Tapa de madera / MDF 18 mm',e:0,kgm2:13,price:60000,wood:true}, // ponytail: se cuenta en placas de 1×2 m como la chapa; el precio es por placa // ponytail: panel de 1×2 m como la chapa; el kg/m² es orientativo (electrosoldada 15×15 ⌀4,2 ≈ 2 kg/m², desplegado ≈ 3)
 ];
 const SHEET_M2=2, SHEET_WASTE=1.15; // hoja de 1x2 m; ponytail: sin nesting 2D, 15% de desperdicio fijo
 const BAR=600, KERF=0.3, PX=3; // PX = píxeles por cm en el plano
@@ -351,7 +353,8 @@ function theme(){const a=css('--accent');fabric.Object.prototype.set({transparen
  canvas.selectionColor=css('--sel');canvas.selectionBorderColor=a;
  const st=css('--steel');canvas.getObjects().forEach(o=>paint(o,st));canvas.requestRenderAll()}
 function meshFill(st){const cv=document.createElement('canvas');cv.width=cv.height=8;const g=cv.getContext('2d');g.strokeStyle=st;g.lineWidth=1;g.beginPath();g.moveTo(0,4);g.lineTo(8,4);g.moveTo(4,0);g.lineTo(4,8);g.stroke();return new fabric.Pattern({source:cv,repeat:'repeat'})}
-function paint(o,st){if(o.kind==='seg')o.set('fill',st);else if(o.kind==='frame'||o.kind==='arc'||o.kind==='vol'||o.kind==='sheet')o.set('stroke',st);if(o.kind==='sheet')o.set('fill',SH[o.p]&&SH[o.p].mesh?meshFill(st):css('--zone'));
+function sheetFill(p,st){const x=SH[p];return x&&x.mesh?meshFill(st):x&&x.wood?'rgba(155,118,83,.5)':css('--zone')}
+function paint(o,st){if(o.kind==='seg')o.set('fill',st);else if(o.kind==='frame'||o.kind==='arc'||o.kind==='vol'||o.kind==='sheet')o.set('stroke',st);if(o.kind==='sheet')o.set('fill',sheetFill(o.p,st));
  else if(o.kind==='bars'||o.kind==='cat')o.getObjects().forEach(c=>{if(c.stroke&&c.stroke!=='transparent')c.set('stroke',st);if(c.fill&&c.fill!=='transparent'&&!String(c.fill).startsWith('rgba'))c.set('fill',st)})}
 function fit(){const w=$('wrap');canvas.setDimensions({width:w.clientWidth,height:w.clientHeight})}
 window.addEventListener('resize',()=>{fit();grid()});
@@ -366,7 +369,7 @@ function mk(kind,opt={}){const st=css('--steel'),p=opt.p||$('curProfile').value,
  if(kind==='arc')o=mkArc({p,r:opt.r||15,sweep:opt.sweep||180});
  if(kind==='vol')o=mkVol({p,r0:1.5,r1:opt.r1||10,turns:opt.turns||1.5});
  if(kind==='cat')o=mkCat(opt.catId);
- if(kind==='sheet')o=new fabric.Rect({kind,p:opt.p||'ch2',width:(opt.w||FW)*PX,height:(opt.h||FH)*PX,fill:SH[opt.p]&&SH[opt.p].mesh?meshFill(st):css('--zone'),stroke:st,strokeWidth:1.5,strokeUniform:true,strokeDashArray:[6,4]});
+ if(kind==='sheet')o=new fabric.Rect({kind,p:opt.p||'ch2',width:(opt.w||FW)*PX,height:(opt.h||FH)*PX,fill:sheetFill(opt.p||'ch2',st),stroke:st,strokeWidth:1.5,strokeUniform:true,strokeDashArray:[6,4]});
  decorate(o);return o}
 function mkBars(a){const st=css('--steel'),w=Math.max(P[a.p].w*PX,2),v=a.dir==='v',span=v?a.bw:a.bh,n=barN(span/PX,a.sp),pitch=span/(n+1);
  const kids=[new fabric.Rect({left:0,top:0,width:a.bw,height:a.bh,fill:css('--zone'),strokeWidth:0})];
@@ -451,7 +454,7 @@ function ghosts(){const f=FACES[cur],pl=PLANES[f.pl],I={x:0,y:1,z:2},mine=-2-cur
  ex.forEach(e=>{if(e.t==='bar')line(e.a,e.b,e.w,e.i);else if(e.i!==mine){const c=px(e.c);
   if(e.t==='ball'||e.t==='ring')items.push(new fabric.Circle({left:c[0]-e.r*PX,top:c[1]-e.r*PX,radius:e.r*PX,fill:e.t==='ball'?col:'',stroke:col,strokeWidth:2}));
   else{const n=v=>{const l=Math.hypot(...v)||1;return v.map(x=>x/l)},u=n(e.U),vv=n(e.V);poly([[-1,-1],[1,-1],[1,1],[-1,1]].map(([s,t])=>px([0,1,2].map(k=>e.c[k]+u[k]*s*e.w/2+vv[k]*t*e.h/2))))}}});
- sh.forEach(x=>{if(x.i===mine)return;const c=(a,b)=>p3(x.pl,a,b,x.at);poly([c(0,0),c(x.w,0),c(x.w,x.h),c(0,x.h)].map(px))});
+ sh.forEach(x=>{if(x.i===mine)return;const c=(a,b)=>p3(x.pl,a,b,x.at);poly([c(x.u0,x.v0),c(x.u0+x.w,x.v0),c(x.u0+x.w,x.v0+x.h),c(x.u0,x.v0+x.h)].map(px))});
  cy.forEach(c=>{const r=c.d/2,e={x:r,y:r,z:r};e[c.axis]=c.len/2;const lo={x:c.pos.x-e.x,y:c.pos.y-e.y,z:c.pos.z-e.z},hi={x:c.pos.x+e.x,y:c.pos.y+e.y,z:c.pos.z+e.z};if(c.half&&c.axis!=='y')hi.y=c.pos.y;
   const cs=[[lo.x,lo.y,lo.z],[hi.x,lo.y,lo.z],[hi.x,hi.y,lo.z],[lo.x,hi.y,lo.z],[lo.x,lo.y,hi.z],[hi.x,lo.y,hi.z],[hi.x,hi.y,hi.z],[lo.x,hi.y,hi.z]].map(px);const xs=cs.map(p=>p[0]),ys=cs.map(p=>p[1]);poly([[Math.min(...xs),Math.min(...ys)],[Math.max(...xs),Math.min(...ys)],[Math.max(...xs),Math.max(...ys)],[Math.min(...xs),Math.max(...ys)]])});
  quiet=true;items.forEach(o=>{o.set({kind:'ghost',opacity:(o.opacity||1)*.3,selectable:false,evented:true,hoverCursor:'help',excludeFromExport:true,objectCaching:false});canvas.add(o);canvas.sendToBack(o)});
@@ -612,6 +615,8 @@ const PLANES={xz:{name:'Horizontal (estante, tapa, piso)',u:'x',v:'z',n:'y'},xy:
 const AXS={x:'W',y:'H',z:'D'};
 let M={W:80,H:90,D:50,p:'an25',edges:{top:true,bot:false,vert:true},parts:[]},sel3=null,selObj=null,selEdge=null;
 function saveM(){savePr()}
+// Tramo de una parte plana sobre un eje: [desde, hasta] en cm; sin dato ocupa toda la caja.
+function rng(q,k,L){const a=Math.max(0,Math.min(L,+q[k+'0']||0)),b=q[k+'1']>0?Math.max(a+1,Math.min(L,+q[k+'1'])):L;return [a,b]}
 function p3(pl,u,v,at){const o={};o[pl.u]=u;o[pl.v]=v;o[pl.n]=at;return [o.x,o.y,o.z]}
 // Devuelve hierros {p,a,b,len,i} y chapas {p,w,h,pl,at,i}; i = índice de parte, -1 = caja.
 // Convención: las medidas de la caja son EXTERIORES. Los hierros van por dentro de la caja (eje a medio perfil del borde)
@@ -624,11 +629,11 @@ function members(){const ms=[],sh=[],ex=[],cy=[],{W,H,D,p,edges:E}=M,i0=Math.max
  if(E.bot){E2('b0',[a,a,a],[x1,a,a],W,'arista abajo');E2('b1',[a,a,z1],[x1,a,z1],W,'arista abajo');E2('b2',[a,a,a],[a,a,z1],D,'arista abajo');E2('b3',[x1,a,a],[x1,a,z1],D,'arista abajo')}
  if(E.vert){E2('v0',[a,a,a],[a,y1,a],H,'pata');E2('v1',[x1,a,a],[x1,y1,a],H,'pata');E2('v2',[a,a,z1],[a,y1,z1],H,'pata');E2('v3',[x1,a,z1],[x1,y1,z1],H,'pata')}
  M.parts.forEach((q,i)=>{const pl=PLANES[q.plane]||PLANES.xz,U=M[AXS[pl.u]],V=M[AXS[pl.v]],N=M[AXS[pl.n]];
-  const wq=q.type==='sheet'?Math.max(SH[q.sheet]?SH[q.sheet].e/10:.2,.6):q.type==='cyl'?.6:Math.max((P[q.p]||P.cu12).w,.8),iq=wq/2,at=Math.min(N-iq,Math.max(iq,q.at)),P_=(u,v)=>p3(pl,u,v,at);
-  if(q.type==='frame'){const wh=`marco/estante a ${Math.round(at)} cm`;seg(P_(iq,iq),P_(U-iq,iq),q.p,i,U,wh);seg(P_(iq,V-iq),P_(U-iq,V-iq),q.p,i,U,wh);seg(P_(iq,iq),P_(iq,V-iq),q.p,i,V,wh);seg(P_(U-iq,iq),P_(U-iq,V-iq),q.p,i,V,wh)}
-  if(q.type==='bars'){const along=q.dir==='u',span=along?V:U,run=along?U:V,n=barN(span,q.sp),pitch=span/(n+1);for(let k=1;k<=n;k++)along?seg(P_(i0,pitch*k),P_(run-i0,pitch*k),q.p,i,run-2*i0,'grilla'):seg(P_(pitch*k,i0),P_(pitch*k,run-i0),q.p,i,run-2*i0,'grilla')}
+  const wq=q.type==='sheet'?Math.max(SH[q.sheet]?SH[q.sheet].e/10:.2,.6):q.type==='cyl'?.6:Math.max((P[q.p]||P.cu12).w,.8),iq=wq/2,at=Math.min(N-iq,Math.max(iq,q.at)),P_=(u,v)=>p3(pl,u,v,at),[ua,ub]=rng(q,'u',U),[va,vb]=rng(q,'v',V);
+  if(q.type==='frame'){const wh=`marco/estante a ${Math.round(at)} cm`,Lu=ub-ua,Lv=vb-va;seg(P_(ua+iq,va+iq),P_(ub-iq,va+iq),q.p,i,Lu,wh);seg(P_(ua+iq,vb-iq),P_(ub-iq,vb-iq),q.p,i,Lu,wh);seg(P_(ua+iq,va+iq),P_(ua+iq,vb-iq),q.p,i,Lv,wh);seg(P_(ub-iq,va+iq),P_(ub-iq,vb-iq),q.p,i,Lv,wh)}
+  if(q.type==='bars'){const along=q.dir==='u',span=along?vb-va:ub-ua,run=along?ub-ua:vb-va,n=barN(span,q.sp),pitch=span/(n+1);for(let k=1;k<=n;k++)along?seg(P_(ua+i0,va+pitch*k),P_(ub-i0,va+pitch*k),q.p,i,run-2*i0,'grilla'):seg(P_(ua+pitch*k,va+i0),P_(ua+pitch*k,vb-i0),q.p,i,run-2*i0,'grilla')}
   if(q.type==='bar'){normBar(q);const ax=q.axis,Lx=M[AXS[ax]],o=[0,1,2].map(j=>{const nm='xyz'[j];return nm===ax?0:Math.min(M[AXS[nm]]-iq,Math.max(iq,q.pos[nm]))}),a1=o.slice(),b1=o.slice(),ai='xyz'.indexOf(ax);a1[ai]=i0;b1[ai]=Lx-i0;seg(a1,b1,q.p,i,Lx-2*i0,'travesaño')}
-  if(q.type==='sheet')sh.push({p:q.sheet,w:U,h:V,pl,at,i});
+  if(q.type==='sheet')sh.push({p:q.sheet,w:ub-ua,h:vb-va,u0:ua,v0:va,pl,at,i});
   if(q.type==='cyl')cy.push({axis:q.axis||'x',pos:q.pos,d:q.d||57,len:q.len||88,half:!!q.half,item:q.item||'tacho200',lid:!!q.lid,hinge:q.hinge||'',hangle:q.hangle||100,i});
   });
  FACES.forEach((f,k)=>face3d(f,k,ex));
@@ -705,10 +710,10 @@ function leafFor(LEAF,e){if(e.i>-2)return null;const k=-2-e.i,f=FACES[k],cfg=M.h
  return leafGroup(LEAF,f.id+'U',V3(pivot),axis,ang,V3(p3(pl,(uL+uR)/2,(vT+vB)/2,at)),out)}
 // Partes planas (marco, chapa, grilla) con bisagra en un lado: u0/u1/v0/v1 son los lados del plano; las partes con la misma línea de bisagra comparten pivote.
 const SIDEN={x:['izquierda','derecha'],y:['abajo','arriba'],z:['atrás','adelante']};
-function hingeKey(q){const pl=PLANES[q.plane]||PLANES.xz;return q.hinge?`part|${pl.n}|${Math.round(q.at)}|${q.hinge}`:null}
-function leafForPart(LEAF,i){const q=M.parts[i];if(!q||!q.hinge||!['frame','sheet','bars'].includes(q.type))return null;const pl=PLANES[q.plane]||PLANES.xz,U=M[AXS[pl.u]],V=M[AXS[pl.v]],N=M[AXS[pl.n]],at=Math.min(N,Math.max(0,q.at)),V3=a=>new THREE.Vector3(...a);
- const s=q.hinge,pivot=s==='u0'?p3(pl,0,V/2,at):s==='u1'?p3(pl,U,V/2,at):s==='v0'?p3(pl,U/2,0,at):p3(pl,U/2,V,at),axis=unit(s[0]==='u'?pl.v:pl.u),out=unit(pl.n).multiplyScalar(at>=N/2?1:-1);
- return leafGroup(LEAF,hingeKey(q),V3(pivot),axis,(q.hangle||100)*Math.PI/180,V3(p3(pl,U/2,V/2,at)),out)}
+function hingeKey(q){const pl=PLANES[q.plane]||PLANES.xz;return q.hinge?`part|${pl.n}|${Math.round(q.at)}|${q.hinge}|${q.u0||0}-${q.u1||''}|${q.v0||0}-${q.v1||''}`:null}
+function leafForPart(LEAF,i){const q=M.parts[i];if(!q||!q.hinge||!['frame','sheet','bars'].includes(q.type))return null;const pl=PLANES[q.plane]||PLANES.xz,N=M[AXS[pl.n]],[ua,ub]=rng(q,'u',M[AXS[pl.u]]),[va,vb]=rng(q,'v',M[AXS[pl.v]]),um=(ua+ub)/2,vm=(va+vb)/2,at=Math.min(N,Math.max(0,q.at)),V3=a=>new THREE.Vector3(...a);
+ const s=q.hinge,pivot=s==='u0'?p3(pl,ua,vm,at):s==='u1'?p3(pl,ub,vm,at):s==='v0'?p3(pl,um,va,at):p3(pl,um,vb,at),axis=unit(s[0]==='u'?pl.v:pl.u),out=unit(pl.n).multiplyScalar(at>=N/2?1:-1);
+ return leafGroup(LEAF,hingeKey(q),V3(pivot),axis,(q.hangle||100)*Math.PI/180,V3(p3(pl,um,vm,at)),out)}
 // Grilla de líneas para la malla: centro c, versores U y V, tamaño w×h en cm.
 function meshLines(c,U,V,w,h,color){const pts=[],C=new THREE.Vector3(...c),u=new THREE.Vector3(...U).normalize(),v=new THREE.Vector3(...V).normalize(),st=2;
  for(let x=-w/2;x<=w/2+1e-6;x+=st)pts.push(C.clone().add(u.clone().multiplyScalar(x)).add(v.clone().multiplyScalar(-h/2)),C.clone().add(u.clone().multiplyScalar(x)).add(v.clone().multiplyScalar(h/2)));
@@ -727,8 +732,8 @@ function buildScene(){scene.remove(group);group=new THREE.Group();HINGES=[];FEAT
  for(const m of ms){feat(m.a,0);feat(m.b,0);feat([(m.a[0]+m.b[0])/2,(m.a[1]+m.b[1])/2,(m.a[2]+m.b[2])/2],0);const w=Math.max((P[m.p]||P.cu12).w,.8),g=new THREE.BoxGeometry(m.len,w,w),mesh=new THREE.Mesh(g,new THREE.MeshLambertMaterial({color:(m.i===-1?selEdge!=null&&m.edge===selEdge:m.i===sel3&&!selObj)?acc:st}));mesh.userData.edge=m.edge;
   const a=new THREE.Vector3(...m.a),b=new THREE.Vector3(...m.b),d=b.clone().sub(a).normalize();mesh.position.copy(a.clone().add(b).multiplyScalar(.5));mesh.quaternion.setFromUnitVectors(X,d);mesh.userData.i=m.i;place(mesh,m.i>=0?leafForPart(LEAF,m.i):null)}
  for(const x of sh){const e=SH[x.p].e/10,dims={x:0,y:0,z:0};dims[x.pl.u]=x.w;dims[x.pl.v]=x.h;dims[x.pl.n]=Math.max(e,.6);
-  const mesh=new THREE.Mesh(new THREE.BoxGeometry(dims.x,dims.y,dims.z),new THREE.MeshLambertMaterial({color:x.i===sel3?acc:st,transparent:true,opacity:SH[x.p].mesh?.12:.75}));
-  const c={x:0,y:0,z:0};c[x.pl.u]=x.w/2;c[x.pl.v]=x.h/2;c[x.pl.n]=x.at;mesh.position.set(c.x,c.y,c.z);mesh.userData.i=x.i;const pv=leafForPart(LEAF,x.i);place(mesh,pv);
+  const mesh=new THREE.Mesh(new THREE.BoxGeometry(dims.x,dims.y,dims.z),new THREE.MeshLambertMaterial({color:x.i===sel3?acc:(SH[x.p].wood?new THREE.Color(0x9b7653):st),transparent:true,opacity:SH[x.p].mesh?.12:SH[x.p].wood?.95:.75}));
+  const c={x:0,y:0,z:0};c[x.pl.u]=x.u0+x.w/2;c[x.pl.v]=x.v0+x.h/2;c[x.pl.n]=x.at;mesh.position.set(c.x,c.y,c.z);mesh.userData.i=x.i;const pv=leafForPart(LEAF,x.i);place(mesh,pv);
   if(SH[x.p].mesh){const g=meshLines([c.x,c.y,c.z],unit(x.pl.u).toArray(),unit(x.pl.v).toArray(),x.w,x.h,x.i===sel3?acc:st);g.userData.i=x.i;place(g,pv)}}
  for(const c of cy){const r=c.d/2,g=new THREE.CylinderGeometry(r,r,c.len,32,1,false,c.lid?Math.PI:0,c.half?Math.PI:Math.PI*2),m=new THREE.Mesh(g,new THREE.MeshLambertMaterial({color:c.i===sel3?acc:st,side:THREE.DoubleSide}));
   m.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),unit(c.axis));m.position.set(c.pos.x,c.pos.y,c.pos.z);m.userData.i=c.i;let pv=null;
@@ -846,7 +851,7 @@ function readForm(){M.W=Math.max(5,+$('mW').value||M.W);M.H=Math.max(5,+$('mH').
 function update3(){buildScene();renderPlist();renderBom();saveM();pushHist();if(S.mode==='2d'){guide();ghosts();renderTabs()}}
 const TYPES={bars:'Grilla / barrotes',bar:'Travesaño',frame:'Marco / estante',sheet:'Chapa / malla',cyl:'Tambor / cilindro'};
 function renderPlist(){const L=$('plist');
- L.innerHTML=M.parts.length?M.parts.map((q,i)=>{const pl=PLANES[q.plane]||PLANES.xz,U=AXS[pl.u],V=AXS[pl.v];
+ const AXN={W:'ancho',H:'alto',D:'profundo'};L.innerHTML=M.parts.length?M.parts.map((q,i)=>{const pl=PLANES[q.plane]||PLANES.xz,U=AXS[pl.u],V=AXS[pl.v];
   const prof=q.type==='sheet'?`<select data-k="sheet">${SHEETS.map(x=>`<option value="${x.id}"${x.id===q.sheet?' selected':''}>${x.name}</option>`).join('')}</select>`:`<select data-k="p">${profOpts(q.p)}</select>`;
   const dir=(q.type==='bars')?`<select data-k="dir"><option value="u"${q.dir==='u'?' selected':''}>a lo ${U==='W'?'ancho':U==='H'?'alto':'profundo'}</option><option value="v"${q.dir==='v'?' selected':''}>a lo ${V==='W'?'ancho':V==='H'?'alto':'profundo'}</option></select>`:'';
   const extra=q.type==='bars'?`<input data-k="sp" type="number" value="${q.sp}" title="paso cm"><span class="muted">cm de paso</span>`:'';
@@ -863,10 +868,11 @@ function renderPlist(){const L=$('plist');
   return `<div class="part${i===sel3&&!selObj?' on':''}" data-i="${i}"><b style="font-family:var(--font-d)">${TYPES[q.type]}</b><button class="x" data-del="${i}" title="Quitar">×</button>
    <span class="lab">cara y posición</span><select data-k="plane">${Object.entries(PLANES).map(([k,v])=>`<option value="${k}"${k===q.plane?' selected':''}>${v.name}</option>`).join('')}</select><input data-k="at" type="number" value="${q.at}" title="posición sobre la normal, cm"><span class="muted">cm</span>
    <span class="lab">material</span>${prof}${dir}${extra}
+   <span class="lab">tramo</span><span class="muted">${AXN[U]}</span><input data-k="u0" type="number" value="${q.u0||0}" title="desde, cm"><span class="muted">a</span><input data-k="u1" type="number" value="${q.u1||M[U]}" title="hasta, cm"><span class="muted">· ${AXN[V]}</span><input data-k="v0" type="number" value="${q.v0||0}" title="desde, cm"><span class="muted">a</span><input data-k="v1" type="number" value="${q.v1||M[V]}" title="hasta, cm"><span class="muted">cm</span>
    <span class="lab">bisagra</span><select data-k="hinge"><option value=""${!q.hinge?' selected':''}>sin bisagra</option>${[['u0',SIDEN[pl.u][0]],['u1',SIDEN[pl.u][1]],['v0',SIDEN[pl.v][0]],['v1',SIDEN[pl.v][1]]].map(([v,n])=>`<option value="${v}"${q.hinge===v?' selected':''}>bisagra ${n}</option>`).join('')}</select>${q.hinge?`<input data-k="hangle" type="number" value="${q.hangle||100}" title="apertura °"><span class="muted">° de apertura</span>`:''}</div>`}).join(''):'<div class="muted">Sin partes todavía. Agregá una grilla, un travesaño, un estante o chapa.</div>';
  L.querySelectorAll('.part[data-i]').forEach(row=>{const i=+row.dataset.i;row.addEventListener('click',e=>{if(e.target.tagName==='BUTTON')return;if(sel3!==i||selObj){sel3=i;selObj=null;buildScene();L.querySelectorAll('.part[data-i]').forEach(r=>r.classList.toggle('on',+r.dataset.i===i))}});
   row.querySelectorAll('[data-k]').forEach(inp=>inp.addEventListener('change',()=>{const q=M.parts[i],k=inp.dataset.k,v=inp.type==='number'?+inp.value:inp.value;
-   if(k==='axis'){if(q.type==='bar')normBar(q);q.axis=v}else if(k.startsWith('pos.')){if(q.type==='bar')normBar(q);q.pos[k.slice(4)]=Math.max(0,v)}else if(k==='d'){q.d=Math.max(2,v)}else if(k==='len'){q.len=Math.max(2,v)}else if(k==='half'){q.half=v==='1'}else if(k==='item'){q.item=v}else if(k==='lid'){q.lid=v==='1'}else if(k==='hinge'){q.hinge=v}else if(k==='hangle'){q.hangle=Math.max(0,Math.min(180,v))}else if(k==='plane'){q.plane=v;q.at=M[AXS[PLANES[v].n]];if(v==='xz')q.at=M.H}else if(k==='at'){q.at=Math.min(M[AXS[PLANES[q.plane].n]],Math.max(0,v))}else if(k==='sp'){q.sp=Math.max(.5,v)}else if(k==='off'){q.off=Math.max(0,v)}else q[k]=v;update3()}))});
+   if(k==='axis'){if(q.type==='bar')normBar(q);q.axis=v}else if(k.startsWith('pos.')){if(q.type==='bar')normBar(q);q.pos[k.slice(4)]=Math.max(0,v)}else if(k==='d'){q.d=Math.max(2,v)}else if(k==='len'){q.len=Math.max(2,v)}else if(k==='half'){q.half=v==='1'}else if(k==='item'){q.item=v}else if(k==='lid'){q.lid=v==='1'}else if(k==='hinge'){q.hinge=v}else if(k==='hangle'){q.hangle=Math.max(0,Math.min(180,v))}else if(k==='plane'){q.plane=v;q.at=M[AXS[PLANES[v].n]];if(v==='xz')q.at=M.H}else if(k==='at'){q.at=Math.min(M[AXS[PLANES[q.plane].n]],Math.max(0,v))}else if(k==='sp'){q.sp=Math.max(.5,v)}else if(/^[uv][01]$/.test(k)){const pl=PLANES[q.plane]||PLANES.xz,L=M[AXS[k[0]==='u'?pl.u:pl.v]];if((k[1]==='1'&&v>=L)||(k[1]==='0'&&v<=0))delete q[k];else q[k]=Math.max(0,Math.min(L,v))}else if(k==='off'){q.off=Math.max(0,v)}else q[k]=v;update3()}))});
  L.querySelectorAll('[data-del]').forEach(b=>b.addEventListener('click',()=>{M.parts.splice(+b.dataset.del,1);sel3=null;update3()}));
  $('facelist').innerHTML='<span class="lab muted">Caras dibujadas en 2D</span>'+FACES.map((f,k)=>{const n=viewObjs(f.id).filter(o=>!o.ref).length;return `<button data-face="${k}" class="${sel3===-2-k?'on':''}" style="font-size:12px;padding:4px 8px">${f.name}: ${n?n+' partes':'vacía'} · editar</button>`}).join('')
   +(selEdge?`<div class="part on"><b style="font-family:var(--font-d)">Arista de la caja (${{t:'arriba',b:'abajo',v:'pata'}[selEdge[0]]})</b><button id="edgeDel" class="x">Quitar esta arista</button></div>`:'')
@@ -900,6 +906,16 @@ const TPL=[
  {id:'rack',name:'Mueble bajo / rack',desc:'Tubo 20, tres estantes de chapa, fondo cerrado',M:{W:120,H:50,D:40,p:'tu20',edges:{top:true,bot:true,vert:true},parts:[{type:'frame',plane:'xz',at:25,p:'tu20'},{type:'sheet',plane:'xz',at:50,sheet:'ch16'},{type:'sheet',plane:'xz',at:25,sheet:'ch16'},{type:'sheet',plane:'xz',at:0,sheet:'ch16'}]},
   faces:{fondo:[F('sheet',{p:'ch16',w:120,h:50})]}},
  {id:'estante',name:'Estantería',desc:'Ángulo 1", cuatro niveles de chapa, cruz atrás',M:{W:90,H:180,D:40,p:'an25',edges:{top:true,bot:true,vert:true},parts:[{type:'frame',plane:'xz',at:45,p:'an25'},{type:'frame',plane:'xz',at:90,p:'an25'},{type:'frame',plane:'xz',at:135,p:'an25'},{type:'sheet',plane:'xz',at:45,sheet:'ch16'},{type:'sheet',plane:'xz',at:90,sheet:'ch16'},{type:'sheet',plane:'xz',at:135,sheet:'ch16'},{type:'sheet',plane:'xz',at:180,sheet:'ch16'},{type:'bars',plane:'xy',at:0,p:'pl12',dir:'v',sp:30}]}},
+ {id:'perchero',name:'Perchero / armario abierto',desc:'Tubo 20, 80 × 42 × 162, tres estantes de madera y barral de caño redondo',M:{W:80,H:162,D:42,p:'tu20',edges:{top:true,bot:false,vert:true},parts:[{type:'frame',plane:'xz',at:140,p:'tu20'},{type:'frame',plane:'xz',at:35,p:'tu20'},{type:'frame',plane:'xz',at:10,p:'tu20'},{type:'sheet',plane:'xz',at:162,sheet:'mad18'},{type:'sheet',plane:'xz',at:140,sheet:'mad18'},{type:'sheet',plane:'xz',at:35,sheet:'mad18'},{type:'sheet',plane:'xz',at:10,sheet:'mad18'},{type:'bar',axis:'x',pos:{x:0,y:134,z:21},p:'ca25'}]}},
+ {id:'mesau',name:'Mesa comedor patas U',desc:'Tubo 40x20, 250 × 90 × 70, patas en U, travesaño central y tapa de madera',M:{W:250,H:70,D:90,p:'tu4020',edges:{top:true,bot:true,vert:true},off:['b0','b1'],parts:[{type:'bar',axis:'x',pos:{x:0,y:69,z:45},p:'tu4020'},{type:'sheet',plane:'xz',at:70,sheet:'mad18'}]}},
+ {id:'banquetaalta',name:'Banqueta alta de bar',desc:'Tubo 20, 35 × 35 × 95, asiento de madera a 80 cm, respaldo bajo y base cerrada',M:{W:35,H:95,D:35,p:'tu20',edges:{top:false,bot:true,vert:true},off:['v2','v3'],parts:[{type:'frame',plane:'xz',at:80,p:'tu20'},{type:'sheet',plane:'xz',at:80,sheet:'mad18'},{type:'bar',axis:'x',pos:{x:0,y:94,z:1},p:'tu20'}]},
+  faces:{frente:[F('seg',{p:'tu20',len:80,angle:90},2,0),F('seg',{p:'tu20',len:80,angle:90},35,0)]}},
+ {id:'racktv',name:'Rack TV con cajones',desc:'Tubo 20, 200 × 40 × 52, estante abierto arriba y cuatro cajones con frente de madera (divisores solo en el tramo de los cajones)',M:{W:200,H:52,D:40,p:'tu20',edges:{top:true,bot:false,vert:true},parts:[{type:'frame',plane:'xz',at:37,p:'tu20'},{type:'frame',plane:'xz',at:7,p:'tu20'},{type:'sheet',plane:'xz',at:52,sheet:'mad18'},{type:'sheet',plane:'xz',at:37,sheet:'mad18'},{type:'sheet',plane:'xz',at:7,sheet:'mad18'},{type:'bars',plane:'xy',at:39,p:'tu20',dir:'v',sp:50,v0:7,v1:37},{type:'sheet',plane:'xy',at:40,sheet:'mad18',u0:1,u1:49,v0:8,v1:36},{type:'sheet',plane:'xy',at:40,sheet:'mad18',u0:51,u1:99,v0:8,v1:36},{type:'sheet',plane:'xy',at:40,sheet:'mad18',u0:101,u1:149,v0:8,v1:36},{type:'sheet',plane:'xy',at:40,sheet:'mad18',u0:151,u1:199,v0:8,v1:36}]}},
+ {id:'carro',name:'Carro con ruedas',desc:'Tubo 20, 47 × 33 × 78, tres estantes de madera, baranda arriba y cuatro ruedas',M:{W:47,H:78,D:33,p:'tu20',edges:{top:true,bot:false,vert:true},parts:[{type:'frame',plane:'xz',at:73,p:'tu20'},{type:'frame',plane:'xz',at:45,p:'tu20'},{type:'frame',plane:'xz',at:17,p:'tu20'},{type:'sheet',plane:'xz',at:73,sheet:'mad18'},{type:'sheet',plane:'xz',at:45,sheet:'mad18'},{type:'sheet',plane:'xz',at:17,sheet:'mad18'}]},
+  faces:{piso:[F('cat',{catId:'rueda'},0,0),F('cat',{catId:'rueda'},32,0),F('cat',{catId:'rueda'},0,18),F('cat',{catId:'rueda'},32,18)]}},
+ {id:'estantecruz',name:'Estantería con cruces',desc:'Tubo 20, 60 × 30 × 150, cinco estantes de madera y cruces de planchuela atrás y a los costados (diagonales dibujadas en las caras)',M:{W:60,H:150,D:30,p:'tu20',edges:{top:true,bot:false,vert:true},parts:[{type:'frame',plane:'xz',at:118,p:'tu20'},{type:'frame',plane:'xz',at:86,p:'tu20'},{type:'frame',plane:'xz',at:54,p:'tu20'},{type:'frame',plane:'xz',at:22,p:'tu20'},{type:'sheet',plane:'xz',at:150,sheet:'mad18'},{type:'sheet',plane:'xz',at:118,sheet:'mad18'},{type:'sheet',plane:'xz',at:86,sheet:'mad18'},{type:'sheet',plane:'xz',at:54,sheet:'mad18'},{type:'sheet',plane:'xz',at:22,sheet:'mad18'}]},
+  faces:{fondo:[F('seg',{p:'pl12',len:161.6,angle:68.2},0,0),F('seg',{p:'pl12',len:161.6,angle:111.8},60,0)],izq:[F('seg',{p:'pl12',len:153.0,angle:78.7},0,0),F('seg',{p:'pl12',len:153.0,angle:101.3},30,0)],der:[F('seg',{p:'pl12',len:153.0,angle:78.7},0,0),F('seg',{p:'pl12',len:153.0,angle:101.3},30,0)]}},
+ {id:'biblioasim',name:'Biblioteca asimétrica',desc:'Tubo 20, 80 × 45 × 160, estantes a media caja con parantes cortos: usa tramos parciales',M:{W:80,H:160,D:45,p:'tu20',edges:{top:true,bot:true,vert:true},parts:[{type:'frame',plane:'xz',at:128,p:'tu20',u0:37,u1:80},{type:'frame',plane:'xz',at:84,p:'tu20',u0:0,u1:47},{type:'frame',plane:'xz',at:36,p:'tu20',u0:33,u1:80},{type:'sheet',plane:'xz',at:160,sheet:'mad18'},{type:'sheet',plane:'xz',at:128,sheet:'mad18',u0:37,u1:80},{type:'sheet',plane:'xz',at:84,sheet:'mad18',u0:0,u1:47},{type:'sheet',plane:'xz',at:36,sheet:'mad18',u0:33,u1:80},{type:'sheet',plane:'xz',at:0,sheet:'mad18'},{type:'bars',plane:'yz',at:37,p:'tu20',dir:'v',sp:15,v0:128,v1:160},{type:'bars',plane:'yz',at:47,p:'tu20',dir:'v',sp:15,v0:84,v1:128},{type:'bars',plane:'yz',at:33,p:'tu20',dir:'v',sp:15,v0:36,v1:84}]}},
  {id:'parrilla',name:'Parrilla',desc:'Ángulo 1", grilla de redondo 10 cada 3 cm, bandeja de chapa',M:{W:80,H:90,D:50,p:'an25',edges:{top:true,bot:false,vert:true},parts:[{type:'bars',plane:'xz',at:90,p:'re10',dir:'v',sp:3},{type:'frame',plane:'xz',at:60,p:'an25'},{type:'sheet',plane:'xz',at:60,sheet:'ch2'},{type:'bar',plane:'xy',at:0,p:'an25',dir:'u',off:30},{type:'bar',plane:'xy',at:50,p:'an25',dir:'u',off:30}]}},
  {id:'parrillatapa',name:'Parrilla con tapa',desc:'Cuerpo de chapa sobre patas de ángulo, tapa con bisagra atrás, parrilla de redondo 10, estante bajo de planchuela y ruedas',M:{W:80,H:90,D:50,p:'an25',edges:{top:false,bot:false,vert:true},parts:[{type:'frame',plane:'xz',at:60,p:'an25'},{type:'sheet',plane:'xz',at:60,sheet:'ch2'},{type:'bars',plane:'xz',at:76,p:'re10',dir:'v',sp:3},{type:'frame',plane:'xz',at:90,p:'an25',hinge:'v0',hangle:100},{type:'sheet',plane:'xz',at:90,sheet:'ch16',hinge:'v0',hangle:100},{type:'frame',plane:'xz',at:15,p:'tu20'},{type:'bars',plane:'xz',at:15,p:'pl25',dir:'v',sp:8}]},
   faces:{frente:[F('sheet',{p:'ch16',w:80,h:10}),F('sheet',{p:'ch16',w:80,h:12},0,18)],fondo:[F('sheet',{p:'ch16',w:80,h:30})],izq:[F('sheet',{p:'ch16',w:50,h:30}),F('cat',{catId:'rueda'},8,82)],der:[F('sheet',{p:'ch16',w:50,h:30}),F('cat',{catId:'rueda'},8,82)]}},
