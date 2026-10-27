@@ -147,7 +147,7 @@ th{font-family:var(--font-d);font-weight:600;letter-spacing:.04em;text-transform
     <button data-add="arc">Arco</button>
     <button data-add="vol">Voluta</button>
     <h2>Chapa</h2>
-    <button data-add="sheet">Pieza de chapa</button>
+    <button data-add="sheet">Chapa o malla</button>
     <h2>Piezas de catálogo</h2>
     <div id="catButtons" style="display:contents"></div>
     <h2>Mis piezas</h2>
@@ -186,7 +186,7 @@ th{font-family:var(--font-d);font-weight:600;letter-spacing:.04em;text-transform
     <button data-padd="bars">Grilla / barrotes</button>
     <button data-padd="bar">Travesaño</button>
     <button data-padd="frame">Marco / estante</button>
-    <button data-padd="sheet">Chapa</button>
+    <button data-padd="sheet">Chapa / malla</button>
     <button data-padd="cyl">Tambor / cilindro</button>
     <div id="facelist" style="display:flex;flex-direction:column;gap:4px"></div>
     <h2>Partes</h2>
@@ -219,6 +219,7 @@ th{font-family:var(--font-d);font-weight:600;letter-spacing:.04em;text-transform
       <div class="row">
         <label>Mano de obra (% sobre material)<input id="labor" type="number" min="0" step="5"></label>
         <label>Consumibles: soldadura, discos, pintura (% sobre material)<input id="cons" type="number" min="0" step="1"></label>
+        <label>Extras ($: flete, instalación, lo que no entra arriba)<input id="extras" type="number" min="0" step="500"></label>
       </div>
       <div class="row" style="justify-content:space-between">
         <div><div class="muted">Peso</div><div class="tot" id="kg"></div></div>
@@ -282,6 +283,7 @@ const SHEETS=[
  {id:'ch2',name:'Chapa 2 mm',e:2,price:47000},
  {id:'ch3',name:'Chapa 3 mm',e:3,price:70000},
  {id:'ch475',name:'Chapa 4,75 mm',e:4.75,price:110000},
+ {id:'malla',name:'Malla / enrejado fino',e:0,kgm2:2.5,price:28000,mesh:true}, // ponytail: panel de 1×2 m como la chapa; el kg/m² es orientativo (electrosoldada 15×15 ⌀4,2 ≈ 2 kg/m², desplegado ≈ 3)
 ];
 const SHEET_M2=2, SHEET_WASTE=1.15; // hoja de 1x2 m; ponytail: sin nesting 2D, 15% de desperdicio fijo
 const BAR=600, KERF=0.3, PX=3; // PX = píxeles por cm en el plano
@@ -325,10 +327,10 @@ function calc(objs,S){
  const cat={};for(const o of objs)if(o.kind==='cat'&&!o.ref)cat[o.catId]=(cat[o.catId]||0)+Math.max(1,o.qty||1);
  const catRows=Object.entries(cat).map(([id,n])=>({id,name:C[id].name,n,cost:n*(S.catPrices[id]??C[id].price)}));
  const sh={};for(const o of objs){const a=sheetM2(o);if(a)sh[o.p]=(sh[o.p]||0)+a}
- const sheetRows=Object.entries(sh).map(([id,m2])=>{const x=SH[id],hojas=Math.ceil(m2*SHEET_WASTE/SHEET_M2);return {id,name:x.name,m2,kg:m2*x.e/1000*7850,hojas,cost:hojas*((S.sheetPrices||{})[id]??x.price)}});
+ const sheetRows=Object.entries(sh).map(([id,m2])=>{const x=SH[id],hojas=Math.ceil(m2*SHEET_WASTE/SHEET_M2);return {id,name:x.name,m2,kg:m2*(x.kgm2??x.e/1000*7850),hojas,cost:hojas*((S.sheetPrices||{})[id]??x.price)}});
  const kg=rows.reduce((a,r)=>a+r.kg,0)+sheetRows.reduce((a,r)=>a+r.kg,0),mat=rows.reduce((a,r)=>a+r.cost,0)+catRows.reduce((a,r)=>a+r.cost,0)+sheetRows.reduce((a,r)=>a+r.cost,0);
- const labor=mat*(+S.labor||0)/100,cons=mat*(+S.cons||0)/100;
- return {rows,catRows,sheetRows,kg,mat,labor,cons,total:mat+labor+cons};
+ const labor=mat*(+S.labor||0)/100,cons=mat*(+S.cons||0)/100,extras=+S.extras||0;
+ return {rows,catRows,sheetRows,kg,mat,labor,cons,extras,total:mat+labor+cons+extras};
 }
 // ===== calc-end =====
 
@@ -340,7 +342,7 @@ const num=(n,d=1)=>n.toLocaleString('es-AR',{maximumFractionDigits:d});
 const css=v=>getComputedStyle(document.documentElement).getPropertyValue(v).trim();
 let S={snap:5,labor:100,cons:10,prices:{},catPrices:{},sheetPrices:{},mode:'2d',profiles:[],pieces:[]};
 try{Object.assign(S,JSON.parse(localStorage.getItem('herreria.cfg'))||{})}catch(e){}
-if(S.cons==null)S.cons=10;delete S.f;delete S.extras;// antes: fijo de pintura y consumibles en $; ahora un % sobre material
+if(S.cons==null)S.cons=10;if(S.extras==null||S.extras===15000)S.extras=0;delete S.f;// consumibles pasaron de $ fijo a %; extras queda como monto libre
 const PROPS=['kind','p','sp','dir','sweep','turns','r','r0','r1','bw','bh','catId','qty','ref','inset','depth','lockScalingX','lockScalingY','perPixelTargetFind'];
 
 // ---- plano ----
@@ -348,7 +350,8 @@ const canvas=new fabric.Canvas('c',{preserveObjectStacking:true,uniformScaling:f
 function theme(){const a=css('--accent');fabric.Object.prototype.set({transparentCorners:false,cornerSize:11,cornerStyle:'circle',cornerColor:a,cornerStrokeColor:'#fff',borderColor:a,padding:3});
  canvas.selectionColor=css('--sel');canvas.selectionBorderColor=a;
  const st=css('--steel');canvas.getObjects().forEach(o=>paint(o,st));canvas.requestRenderAll()}
-function paint(o,st){if(o.kind==='seg')o.set('fill',st);else if(o.kind==='frame'||o.kind==='arc'||o.kind==='vol'||o.kind==='sheet')o.set('stroke',st);
+function meshFill(st){const cv=document.createElement('canvas');cv.width=cv.height=8;const g=cv.getContext('2d');g.strokeStyle=st;g.lineWidth=1;g.beginPath();g.moveTo(0,4);g.lineTo(8,4);g.moveTo(4,0);g.lineTo(4,8);g.stroke();return new fabric.Pattern({source:cv,repeat:'repeat'})}
+function paint(o,st){if(o.kind==='seg')o.set('fill',st);else if(o.kind==='frame'||o.kind==='arc'||o.kind==='vol'||o.kind==='sheet')o.set('stroke',st);if(o.kind==='sheet')o.set('fill',SH[o.p]&&SH[o.p].mesh?meshFill(st):css('--zone'));
  else if(o.kind==='bars'||o.kind==='cat')o.getObjects().forEach(c=>{if(c.stroke&&c.stroke!=='transparent')c.set('stroke',st);if(c.fill&&c.fill!=='transparent'&&!String(c.fill).startsWith('rgba'))c.set('fill',st)})}
 function fit(){const w=$('wrap');canvas.setDimensions({width:w.clientWidth,height:w.clientHeight})}
 window.addEventListener('resize',()=>{fit();grid()});
@@ -363,7 +366,7 @@ function mk(kind,opt={}){const st=css('--steel'),p=opt.p||$('curProfile').value,
  if(kind==='arc')o=mkArc({p,r:opt.r||15,sweep:opt.sweep||180});
  if(kind==='vol')o=mkVol({p,r0:1.5,r1:opt.r1||10,turns:opt.turns||1.5});
  if(kind==='cat')o=mkCat(opt.catId);
- if(kind==='sheet')o=new fabric.Rect({kind,p:opt.p||'ch2',width:(opt.w||FW)*PX,height:(opt.h||FH)*PX,fill:css('--zone'),stroke:st,strokeWidth:1.5,strokeUniform:true,strokeDashArray:[6,4]});
+ if(kind==='sheet')o=new fabric.Rect({kind,p:opt.p||'ch2',width:(opt.w||FW)*PX,height:(opt.h||FH)*PX,fill:SH[opt.p]&&SH[opt.p].mesh?meshFill(st):css('--zone'),stroke:st,strokeWidth:1.5,strokeUniform:true,strokeDashArray:[6,4]});
  decorate(o);return o}
 function mkBars(a){const st=css('--steel'),w=Math.max(P[a.p].w*PX,2),v=a.dir==='v',span=v?a.bw:a.bh,n=barN(span/PX,a.sp),pitch=span/(n+1);
  const kids=[new fabric.Rect({left:0,top:0,width:a.bw,height:a.bh,fill:css('--zone'),strokeWidth:0})];
@@ -412,7 +415,7 @@ function onSel(){const o=canvas.getActiveObject();showDim(o);renderProps()}
 function dims(o){const q=pieces(o),pre=o.ref?'(ya contado) ':'',suf=((o.qty||1)>1?` ×${o.qty}`:'')+(o.depth?` · ${num(o.depth)} cm adentro`:'');return pre+dims0(o,q)+suf}
 function dims0(o,q){if(o.ref){q=pieces({...o,ref:false})}
  if(o.kind==='seg')return `${num(q[0][1])} cm`;
- if(o.kind==='sheet')return `chapa ${num(o.width*o.scaleX/PX)} × ${num(o.height*o.scaleY/PX)} cm`;
+ if(o.kind==='sheet')return `${SH[o.p]&&SH[o.p].mesh?'malla':'chapa'} ${num(o.width*o.scaleX/PX)} × ${num(o.height*o.scaleY/PX)} cm`;
  if(o.kind==='frame')return `${num(q[0][1])} × ${num(q[2][1])} cm ext.`;
  if(o.kind==='bars')return `${q.length/Math.max(1,o.qty||1)} barrotes de ${num(q[0][1])} cm`;
  if(o.kind==='arc')return `arco r ${num(o.r*o.scaleX)} cm · ${num(q[0][1])} cm`;
@@ -525,7 +528,7 @@ function apply(o,k,v){const st=css('--steel');let n=o;
  if(k==='angle'){o.set('angle',v)}
  else if(k==='qty'){o.qty=Math.max(1,Math.round(v))}
  else if(k==='depth'){o.depth=Math.max(0,v)}
- else if(o.kind==='sheet'){if(k==='p')o.p=v;if(k==='w')o.set('scaleX',v*PX/o.width);if(k==='h')o.set('scaleY',v*PX/o.height)}
+ else if(o.kind==='sheet'){if(k==='p'){o.p=v;paint(o,css('--steel'))}if(k==='w')o.set('scaleX',v*PX/o.width);if(k==='h')o.set('scaleY',v*PX/o.height)}
  else if(k==='p'){const w=Math.max(P[v].w*PX,2);o.p=v;
   if(o.kind==='seg')o.set({height:w});else if(o.kind==='frame'){const ext=[o.width*o.scaleX/PX+2*(o.inset||0),o.height*o.scaleY/PX+2*(o.inset||0)],ni=P[v].w/2;o.set({strokeWidth:w,inset:ni,scaleX:1,scaleY:1,width:(ext[0]-2*ni)*PX,height:(ext[1]-2*ni)*PX,left:o.left+(ni-(o.inset||0))*PX,top:o.top+(ni-(o.inset||0))*PX})}else if(o.kind==='arc'||o.kind==='vol')o.set({strokeWidth:w});
   else if(o.kind==='bars')n=rebuild(o,()=>mkBars({p:v,bw:o.bw*o.scaleX,bh:o.bh*o.scaleY,sp:o.sp,dir:o.dir}))}
@@ -552,17 +555,18 @@ function renderBom(){const r=calc(bomObjects(),S);
 function renderPrices(){
  $('prices').innerHTML=`<tr><th>Perfil</th><th>kg/m</th><th>$ / barra</th></tr>`+PROFILES.filter(p=>!p.hidden).map(p=>`<tr><td>${p.name}${p.custom?' <span class="muted">(propio)</span>':''}</td><td>${num(p.kgm,3)}</td><td><input data-price="${p.id}" type="number" step="100" value="${S.prices[p.id]??p.price}">${p.custom?` <button data-hideprof="${p.id}" title="Quitar de las listas">×</button>`:''}</td></tr>`).join('');
  document.querySelectorAll('[data-hideprof]').forEach(b=>b.addEventListener('click',()=>{const p=(S.profiles||[]).find(x=>x.id===b.dataset.hideprof);if(p){p.hidden=true;saveCfg();applyProfiles();renderPrices()}}));
- $('sheetprices').innerHTML=`<tr><th>Chapa</th><th>kg/m²</th><th>$ / hoja</th></tr>`+SHEETS.map(x=>`<tr><td>${x.name}</td><td>${num(x.e*7.85,1)}</td><td><input data-sprice="${x.id}" type="number" step="500" value="${S.sheetPrices[x.id]??x.price}"></td></tr>`).join('');
+ $('sheetprices').innerHTML=`<tr><th>Chapa / malla</th><th>kg/m²</th><th>$ / hoja 1×2 m</th></tr>`+SHEETS.map(x=>`<tr><td>${x.name}</td><td>${num(x.kgm2??x.e*7.85,1)}</td><td><input data-sprice="${x.id}" type="number" step="500" value="${S.sheetPrices[x.id]??x.price}"></td></tr>`).join('');
  document.querySelectorAll('[data-sprice]').forEach(i=>i.addEventListener('input',()=>{S.sheetPrices[i.dataset.sprice]=+i.value;renderBom();saveCfg()}));
  $('catprices').innerHTML=`<tr><th>Pieza</th><th>$ / unidad</th></tr>`+CATALOG.map(c=>`<tr><td>${c.name}</td><td><input data-cprice="${c.id}" type="number" step="50" value="${S.catPrices[c.id]??c.price}"></td></tr>`).join('');
  document.querySelectorAll('[data-price]').forEach(i=>i.addEventListener('input',()=>{S.prices[i.dataset.price]=+i.value;renderBom();saveCfg()}));
  document.querySelectorAll('[data-cprice]').forEach(i=>i.addEventListener('input',()=>{S.catPrices[i.dataset.cprice]=+i.value;renderBom();saveCfg()}));
- $('labor').value=S.labor;$('cons').value=S.cons}
+ $('labor').value=S.labor;$('cons').value=S.cons;$('extras').value=S.extras}
 function saveCfg(){try{localStorage.setItem('herreria.cfg',JSON.stringify(S))}catch(e){}}
 $('btnNewProf').addEventListener('click',()=>{const p=mkProfile($('npType').value,$('npA').value,$('npB').value,$('npE').value,$('npPrice').value);if(!p){$('npMsg').textContent='Faltan medidas: al menos el lado o diámetro, y el espesor cuando corresponde.';return}
  S.profiles=S.profiles||[];S.profiles.push(p);saveCfg();applyProfiles();renderPrices();$('npMsg').textContent=`Agregado: ${p.name}, ${num(p.kgm,3)} kg/m. Ya está en las listas de perfil.`;$('npA').value=$('npB').value=$('npE').value=$('npPrice').value=''});
 $('labor').addEventListener('input',e=>{S.labor=+e.target.value||0;renderBom();saveCfg()});
 $('cons').addEventListener('input',e=>{S.cons=+e.target.value||0;renderBom();saveCfg()});
+$('extras').addEventListener('input',e=>{S.extras=+e.target.value||0;renderBom();saveCfg()});
 // ---- piezas propias: una selección del plano guardada con nombre, para insertar en cualquier cara ----
 function pieceThumb(objs,cb){const sc=new fabric.StaticCanvas(null,{width:160,height:100,backgroundColor:css('--panel')});
  fabric.util.enlivenObjects(objs,os=>{os.forEach(o=>{o.set('opacity',1);sc.add(o)});let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;os.forEach(o=>{const b=o.getBoundingRect(true,true);x0=Math.min(x0,b.left);y0=Math.min(y0,b.top);x1=Math.max(x1,b.left+b.width);y1=Math.max(y1,b.top+b.height)});
@@ -580,7 +584,7 @@ function renderPieces(){const L=$('pieces'),ps=S.pieces||[];L.innerHTML=ps.lengt
  L.querySelectorAll('[data-piece]').forEach(b=>b.addEventListener('click',()=>insertPiece(ps.find(x=>x.id===b.dataset.piece))));
  L.querySelectorAll('[data-piecedel]').forEach(b=>b.addEventListener('click',()=>{if(b.dataset.armed){S.pieces=ps.filter(x=>x.id!==b.dataset.piecedel);saveCfg();renderPieces()}else{b.dataset.armed='1';b.textContent='¿Quitar?';setTimeout(()=>{b.dataset.armed='';b.textContent='×'},3000)}}))}
 $('btnPieceSave').addEventListener('click',savePiece);
-function summary(){const r=calc(bomObjects(),S);return ['PRESUPUESTO HERRERÍA','',...r.rows.map(x=>`• ${x.name}: ${x.bars} barra(s) de 6 m (${num(x.m,1)} m útiles, ${num(x.kg)} kg) ${fmt(x.cost)}`),...r.sheetRows.map(x=>`• ${x.name}: ${x.hojas} hoja(s) de 1x2 m (${num(x.m2,2)} m², ${num(x.kg)} kg) ${fmt(x.cost)}`),...r.catRows.map(x=>`• ${x.name} x${x.n}: ${fmt(x.cost)}`),'',`Peso total: ${num(r.kg)} kg`,`Material: ${fmt(r.mat)}`,`Mano de obra (${S.labor}%): ${fmt(r.labor)}`,`Consumibles (${S.cons}%): ${fmt(r.cons)}`,`TOTAL: ${fmt(r.total)}`].join('\n')}
+function summary(){const r=calc(bomObjects(),S);return ['PRESUPUESTO HERRERÍA','',...r.rows.map(x=>`• ${x.name}: ${x.bars} barra(s) de 6 m (${num(x.m,1)} m útiles, ${num(x.kg)} kg) ${fmt(x.cost)}`),...r.sheetRows.map(x=>`• ${x.name}: ${x.hojas} hoja(s) de 1x2 m (${num(x.m2,2)} m², ${num(x.kg)} kg) ${fmt(x.cost)}`),...r.catRows.map(x=>`• ${x.name} x${x.n}: ${fmt(x.cost)}`),'',`Peso total: ${num(r.kg)} kg`,`Material: ${fmt(r.mat)}`,`Mano de obra (${S.labor}%): ${fmt(r.labor)}`,`Consumibles (${S.cons}%): ${fmt(r.cons)}`,`Extras: ${fmt(r.extras)}`,`TOTAL: ${fmt(r.total)}`].join('\n')}
 // Machete de taller: qué cortar, cuántos y cómo repartir cada barra. Agrupado por perfil.
 function cutList(){const objs=objects3d(),r=calc(objs,S),p=curPr(),L=[`LISTA DE CORTES · ${p?p.name:''}`,`Caja ${M.W} × ${M.H} × ${M.D} cm exteriores · largos exteriores, corte a inglete o lado seguro`,''];
  const L1=x=>num(x,1);
@@ -645,7 +649,7 @@ function face3d(f,k,ex){const all=viewObjs(f.id);if(!all.length)return;const pl=
   else if(o.kind==='arc'){const r=o.r*PX,t=o.sweep*Math.PI/180,pts=[];for(let k=0;k<=32;k++){const a=Math.PI-t*k/32;pts.push([r*Math.cos(a),-r*Math.sin(a)])}const mx=Math.min(...pts.map(p=>p[0])),my=Math.min(...pts.map(p=>p[1]));chain(pts.map(p=>[p[0]-mx,p[1]-my]))}
   else if(o.kind==='vol'){const pts=volPts(o.r0,o.r1,o.turns).map(p=>[p[0]*PX,p[1]*PX]),mx=Math.min(...pts.map(p=>p[0])),my=Math.min(...pts.map(p=>p[1]));chain(pts.map(p=>[p[0]-mx,p[1]-my]))}
   else if(o.kind==='sheet'||o.kind==='cat'){const c=T(W/2,H/2),u=T(1,0),o0=T(0,0),vv=T(0,1);const U=[u[0]-o0[0],u[1]-o0[1],u[2]-o0[2]],VV=[vv[0]-o0[0],vv[1]-o0[1],vv[2]-o0[2]];
-   if(o.kind==='sheet')ex.push({t:'plate',c,U,V:VV,w:W*(o.scaleX||1)/PX,h:H*(o.scaleY||1)/PX,e:Math.max(SH[o.p]?SH[o.p].e/10:.2,.6),i,oi,ghost:true});
+   if(o.kind==='sheet')ex.push({t:'plate',c,U,V:VV,w:W*(o.scaleX||1)/PX,h:H*(o.scaleY||1)/PX,e:Math.max(SH[o.p]?SH[o.p].e/10:.2,.6),i,oi,ghost:true,mesh:!!(SH[o.p]&&SH[o.p].mesh)});
    else{const cs=C[o.catId]||{shape:'ball',s:5},sz=cs.s;
     if(cs.shape==='ball')ex.push({t:'ball',c,r:sz/2,i,oi});
     else if(cs.shape==='ring')ex.push({t:'ring',c,U,V:VV,r:sz/2,i,oi});
@@ -705,6 +709,11 @@ function hingeKey(q){const pl=PLANES[q.plane]||PLANES.xz;return q.hinge?`part|${
 function leafForPart(LEAF,i){const q=M.parts[i];if(!q||!q.hinge||!['frame','sheet','bars'].includes(q.type))return null;const pl=PLANES[q.plane]||PLANES.xz,U=M[AXS[pl.u]],V=M[AXS[pl.v]],N=M[AXS[pl.n]],at=Math.min(N,Math.max(0,q.at)),V3=a=>new THREE.Vector3(...a);
  const s=q.hinge,pivot=s==='u0'?p3(pl,0,V/2,at):s==='u1'?p3(pl,U,V/2,at):s==='v0'?p3(pl,U/2,0,at):p3(pl,U/2,V,at),axis=unit(s[0]==='u'?pl.v:pl.u),out=unit(pl.n).multiplyScalar(at>=N/2?1:-1);
  return leafGroup(LEAF,hingeKey(q),V3(pivot),axis,(q.hangle||100)*Math.PI/180,V3(p3(pl,U/2,V/2,at)),out)}
+// Grilla de líneas para la malla: centro c, versores U y V, tamaño w×h en cm.
+function meshLines(c,U,V,w,h,color){const pts=[],C=new THREE.Vector3(...c),u=new THREE.Vector3(...U).normalize(),v=new THREE.Vector3(...V).normalize(),st=2;
+ for(let x=-w/2;x<=w/2+1e-6;x+=st)pts.push(C.clone().add(u.clone().multiplyScalar(x)).add(v.clone().multiplyScalar(-h/2)),C.clone().add(u.clone().multiplyScalar(x)).add(v.clone().multiplyScalar(h/2)));
+ for(let y=-h/2;y<=h/2+1e-6;y+=st)pts.push(C.clone().add(v.clone().multiplyScalar(y)).add(u.clone().multiplyScalar(-w/2)),C.clone().add(v.clone().multiplyScalar(y)).add(u.clone().multiplyScalar(w/2)));
+ return new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(pts),new THREE.LineBasicMaterial({color}))}
 function buildScene(){scene.remove(group);group=new THREE.Group();HINGES=[];FEAT=[];const feat=(p,pri)=>FEAT.push({p:[p[0],p[1],p[2]],pri});for(const x of [0,M.W])for(const y of [0,M.H])for(const z of [0,M.D])feat([x,y,z],1);const LEAF={},place=(m,pv)=>{if(pv){m.position.sub(pv.position);pv.add(m)}else group.add(m)};const st=hex('--steel'),acc=hex('--accent'),{ms,sh,ex,cy}=members();EMPTY=!ms.length&&!sh.length&&!ex.length&&!cy.length;
  const X=new THREE.Vector3(1,0,0),Z=new THREE.Vector3(0,0,1),hot=(i,oi)=>i===-1?(selEdge!=null&&oi===selEdge):(i===sel3&&(selObj?selObj.oi===oi:true)),mat=(i,ghost,oi)=>new THREE.MeshLambertMaterial({color:hot(i,oi)?acc:st,transparent:!!ghost,opacity:ghost?.75:1});
  const bar=(a,b,w,i,oi,pv)=>{const A=new THREE.Vector3(...a),B=new THREE.Vector3(...b),len=A.distanceTo(B);if(len<.05)return;feat(a,0);feat(b,0);feat([(a[0]+b[0])/2,(a[1]+b[1])/2,(a[2]+b[2])/2],0);const mesh=new THREE.Mesh(new THREE.BoxGeometry(len,w,w),mat(i,false,oi));mesh.position.copy(A.clone().add(B).multiplyScalar(.5));mesh.quaternion.setFromUnitVectors(X,B.clone().sub(A).normalize());mesh.userData.i=i;mesh.userData.oi=oi;place(mesh,pv)};
@@ -713,12 +722,14 @@ function buildScene(){scene.remove(group);group=new THREE.Group();HINGES=[];FEAT
   else{const U=new THREE.Vector3(...e.U).normalize(),Vv=new THREE.Vector3(...e.V).normalize(),N=U.clone().cross(Vv).normalize();
    const m=e.t==='ring'?new THREE.Mesh(new THREE.TorusGeometry(e.r,Math.max(.4,e.r/5),8,24),mat(e.i,false,e.oi)):new THREE.Mesh(new THREE.BoxGeometry(e.w,e.h,e.e),mat(e.i,e.ghost,e.oi));
    if(e.t==='ring')m.quaternion.setFromUnitVectors(Z,N);else m.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(U,Vv,N));
+   if(e.mesh){m.material.opacity=.12;const g=meshLines(e.c,e.U,e.V,e.w,e.h,hot(e.i,e.oi)?acc:st);g.userData.i=e.i;g.userData.oi=e.oi;place(g,pv)}
    m.position.set(...e.c);m.userData.i=e.i;m.userData.oi=e.oi;place(m,pv)}}
  for(const m of ms){feat(m.a,0);feat(m.b,0);feat([(m.a[0]+m.b[0])/2,(m.a[1]+m.b[1])/2,(m.a[2]+m.b[2])/2],0);const w=Math.max((P[m.p]||P.cu12).w,.8),g=new THREE.BoxGeometry(m.len,w,w),mesh=new THREE.Mesh(g,new THREE.MeshLambertMaterial({color:(m.i===-1?selEdge!=null&&m.edge===selEdge:m.i===sel3&&!selObj)?acc:st}));mesh.userData.edge=m.edge;
   const a=new THREE.Vector3(...m.a),b=new THREE.Vector3(...m.b),d=b.clone().sub(a).normalize();mesh.position.copy(a.clone().add(b).multiplyScalar(.5));mesh.quaternion.setFromUnitVectors(X,d);mesh.userData.i=m.i;place(mesh,m.i>=0?leafForPart(LEAF,m.i):null)}
  for(const x of sh){const e=SH[x.p].e/10,dims={x:0,y:0,z:0};dims[x.pl.u]=x.w;dims[x.pl.v]=x.h;dims[x.pl.n]=Math.max(e,.6);
-  const mesh=new THREE.Mesh(new THREE.BoxGeometry(dims.x,dims.y,dims.z),new THREE.MeshLambertMaterial({color:x.i===sel3?acc:st,transparent:true,opacity:.75}));
-  const c={x:0,y:0,z:0};c[x.pl.u]=x.w/2;c[x.pl.v]=x.h/2;c[x.pl.n]=x.at;mesh.position.set(c.x,c.y,c.z);mesh.userData.i=x.i;place(mesh,leafForPart(LEAF,x.i))}
+  const mesh=new THREE.Mesh(new THREE.BoxGeometry(dims.x,dims.y,dims.z),new THREE.MeshLambertMaterial({color:x.i===sel3?acc:st,transparent:true,opacity:SH[x.p].mesh?.12:.75}));
+  const c={x:0,y:0,z:0};c[x.pl.u]=x.w/2;c[x.pl.v]=x.h/2;c[x.pl.n]=x.at;mesh.position.set(c.x,c.y,c.z);mesh.userData.i=x.i;const pv=leafForPart(LEAF,x.i);place(mesh,pv);
+  if(SH[x.p].mesh){const g=meshLines([c.x,c.y,c.z],unit(x.pl.u).toArray(),unit(x.pl.v).toArray(),x.w,x.h,x.i===sel3?acc:st);g.userData.i=x.i;place(g,pv)}}
  for(const c of cy){const r=c.d/2,g=new THREE.CylinderGeometry(r,r,c.len,32,1,false,c.lid?Math.PI:0,c.half?Math.PI:Math.PI*2),m=new THREE.Mesh(g,new THREE.MeshLambertMaterial({color:c.i===sel3?acc:st,side:THREE.DoubleSide}));
   m.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),unit(c.axis));m.position.set(c.pos.x,c.pos.y,c.pos.z);m.userData.i=c.i;let pv=null;
   if(c.lid&&c.hinge&&c.axis!=='y'){const perp=c.axis==='x'?'z':'x',sg=(c.hinge==='atras'||c.hinge==='izq')?-1:1,pivot=new THREE.Vector3(c.pos.x,c.pos.y,c.pos.z),test=pivot.clone();pivot[perp]+=sg*r;test[perp]-=sg*r;pv=leafGroup(LEAF,'cyl'+c.i,pivot,unit(c.axis),(c.hangle||100)*Math.PI/180,test,new THREE.Vector3(0,1,0))}
@@ -833,7 +844,7 @@ function readForm(){M.W=Math.max(5,+$('mW').value||M.W);M.H=Math.max(5,+$('mH').
  M.parts.forEach(q=>{const mx=M[AXS[PLANES[q.plane].n]];q.at=Math.min(mx,Math.max(0,q.at))});frameCam();update3()}
 ['mW','mH','mD','mP','eTop','eBot','eVert'].forEach(id=>$(id).addEventListener('change',readForm));
 function update3(){buildScene();renderPlist();renderBom();saveM();pushHist();if(S.mode==='2d'){guide();ghosts();renderTabs()}}
-const TYPES={bars:'Grilla / barrotes',bar:'Travesaño',frame:'Marco / estante',sheet:'Chapa',cyl:'Tambor / cilindro'};
+const TYPES={bars:'Grilla / barrotes',bar:'Travesaño',frame:'Marco / estante',sheet:'Chapa / malla',cyl:'Tambor / cilindro'};
 function renderPlist(){const L=$('plist');
  L.innerHTML=M.parts.length?M.parts.map((q,i)=>{const pl=PLANES[q.plane]||PLANES.xz,U=AXS[pl.u],V=AXS[pl.v];
   const prof=q.type==='sheet'?`<select data-k="sheet">${SHEETS.map(x=>`<option value="${x.id}"${x.id===q.sheet?' selected':''}>${x.name}</option>`).join('')}</select>`:`<select data-k="p">${profOpts(q.p)}</select>`;

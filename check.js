@@ -22,6 +22,9 @@ const r=calc([{kind:'bars',p:'cu12',bw:cm(150),bh:cm(120),sp:12,dir:'v'},{kind:'
 A(r.rows[0].bars===3&&Math.abs(r.rows[0].kg-14.4*1.13)<1e-6,'calc kg');
 A(r.catRows[0].n===2&&r.total===(3*18500+2*1200)*2,'total');
 A(Math.abs(calc([{kind:'cat',catId:'lanza'}],{prices:{},catPrices:{},labor:50,cons:10}).total-1200*1.6)<1e-9,'cons %');
+A(Math.abs(calc([{kind:'cat',catId:'lanza'}],{prices:{},catPrices:{},labor:50,cons:10,extras:500}).total-(1200*1.6+500))<1e-9,'extras');
+// malla: 1 m² → 1 panel, kg por kgm2
+const rm=calc([{kind:'sheet',p:'malla',width:cm(100),height:cm(100)}],S).sheetRows[0];A(rm.hojas===1&&Math.abs(rm.kg-2.5)<1e-9&&rm.cost===28000,'malla');
 // ya contado no suma; cantidad multiplica
 A(pieces({kind:'seg',p:'tu30',width:cm(100),ref:true}).length===0,'ref');
 A(pieces({kind:'seg',p:'tu30',width:cm(100),qty:4}).length===4,'qty');
